@@ -59,50 +59,6 @@ def label_positioning(renderer, state):
 def label_spacing(renderer, state):
     return state[0] * renderer.CELL_SIZE[0] + renderer.CELL_SIZE[1] / 8
 
-# def label_world(font_aliases=pygame.font.SysFont(None, int(cell_w / 8) + 1)):
-#     def render(env, agent, *bounds):
-#         for j in bounds[0]:
-#             for i in bounds[1]:
-#                 # lable the tile
-#                 q = agent.Q(np.array([j, i])).squeeze()
-#                 colors = ["orange", "yellow", "purple", "blue"]
-
-#                 action_idx = np.argmax(q)
-
-#                 if action_idx == 0:
-#                     p1 = (j * cell_w + cell_w / 2, i * cell_h + cell_h / 2),
-#                     p2 = (j * cell_w + .9 * cell_w, i * cell_h + cell_h / 2)
-
-#                 elif action_idx == 1:
-#                     p1 = (j * cell_w + cell_w / 2, i * cell_h + cell_h / 2),
-#                     p2 = (j * cell_w + .1 * cell_w, i * cell_h + cell_h / 2)
-
-#                 elif action_idx == 2:
-#                     p1 = (j * cell_w + cell_w / 2, i * cell_h + cell_h / 2)
-#                     p2 = (j * cell_w + cell_w / 2, i * cell_h + .1 * cell_h)
-                    
-#                 elif action_idx == 3:
-#                     p1 = (j * cell_w + cell_w / 2, i * cell_h + cell_h / 2)
-#                     p2 = (j * cell_w + cell_w / 2, i * cell_h + .9 * cell_h)
-                
-#                 lines = [
-#                     f"R: {q[0] :.2f}",
-#                     f"L: {q[1] :.2f}",
-#                     f"U: {q[2] :.2f}",
-#                     f"D: {q[3] :.2f}"
-#                 ]
-
-#                 y = i * cell_h + cell_h / 8
-#                 for line, color in zip(lines, colors):
-#                     text_surface = font_aliases.render(line, True, color)
-#                     env.renderer.screen.blit(text_surface, (j * cell_w + cell_w / 8, y))
-#                     y += font_aliases.get_linesize()
-
-#                 pygame.draw.line(env.renderer.screen, colors[action_idx], p1, p2, int(cell_w / 25))
-#                 pygame.draw.circle(env.renderer.screen, colors[action_idx], p2, cell_w / 15)
-
-#     return render
-
 def render_player(screen):
     if agent.record:
         pygame.draw.line(screen, 'red', (
@@ -201,5 +157,4 @@ env.run(
     fps=1000
 )
 
-# ChatGPT linearity in writing (not revising back or refining after text generation) reduce its coherence
 # ! TRY TO BRANCH NETJET AND ADD INDEPENDENCY FROM THE SEQUENCTIAL NN CLASS.

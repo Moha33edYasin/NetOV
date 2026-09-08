@@ -32,49 +32,6 @@ class Object:
     def set_renderer(self, render_f):
         self.render = render_f
 
-    # def collide(self, obj, offset_left=0, offset_right=0, offset_top=0, offset_down=0):
-
-    #     if hasattr(self, "radius"):
-    #         radial_ray = self.radius + offset_left
-    #         if hasattr(obj, "radius"):
-
-    #             dx = self.pos[0] - obj.pos[0]
-    #             dy = self.pos[1] - obj.pos[1]
-
-    #             return dx * dx + dy * dy >= radial_ray * radial_ray
-
-    #         elif hasattr(obj, "width") and hasattr(obj, "height"):
-    #             lower_bound_x = obj.pos[0] - offset_left
-    #             upper_bound_x = obj.pos[0] + obj.width + offset_right
-    #             lower_bound_y = obj.pos[1] - offset_top
-    #             upper_bound_y = obj.pos[1] + obj.width + offset_down
-
-    #             closest_x = max(lower_bound_x, min(upper_bound_x, self.pos[0])) 
-    #             closest_y = max(lower_bound_y, min(upper_bound_y, self.pos[1]))
-
-    #             dx = closest_x - obj.pos[0]
-    #             dy = closest_y - obj.pos[1]
-
-    #             return dx * dx + dy * dy >= radial_ray * radial_ray
-
-    #     if hasattr(self, "radius"):
-    #         w, h = self.radius, self.radius
-    #     elif hasattr(self, "width") and hasattr(self, "height"):
-    #         w, h = self.width, self.height
-
-    #     if hasattr(obj, "radius"):
-    #         ow, oh = obj.radius, obj.radius
-    #     elif hasattr(obj, "width") and hasattr(obj, "height"):
-    #         ow, oh = obj.width, obj.height
-
-    #     lower_bound_x = obj.pos[0] - w - offset_left
-    #     upper_bound_x = obj.pos[0] + ow + w + offset_right
-    #     lower_bound_y = obj.pos[1] - h - offset_top
-    #     upper_bound_y = obj.pos[1] + oh + h + offset_down
-
-    #     return (lower_bound_x <= self.pos[0] <= upper_bound_x and
-    #             lower_bound_y <= self.pos[1] <= upper_bound_y)
-
     def collide(self, obj, offset_left=0, offset_right=0, offset_top=0, offset_down=0):
         if hasattr(self, "radius"):
             w, h = self.radius, self.radius
@@ -509,10 +466,3 @@ class Renderer:
     def quit(self): self.quit_core()
 
     del pre_process
-
-# the gradient is vanishing and the Q value goes to one actions (R or D depend on dqn activations)
-# * Solved: it was really about anchoring the TD to the terminal state that will have target value of (r) which I forget to add
-# ! Now, I need to add nn for target values, and fix the nn to accept (x, y) and generlize 
-# ! add replay buffer (it will take a batch and sample it to the DQN, just like supervised learning)
-# * for clarity: rearrage the nn input to take (s, a) --> Q, not s --> [Q_a]
-# ! I suspect that Huber is implemented wrongly
