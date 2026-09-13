@@ -5,8 +5,8 @@
 The goal of NetOV is to provide a lightweight way to construct environments, agents, state representations, actions, rewards, and training loops around neural networks without relying on high-level reinforcement-learning frameworks.
 
 > **Status:** Experimental / Work in Progress  
-> The agent did learn how to solve discrete maze environment (refer to `maze_solver.py` to experiment with the actual code).  
-> The current Breakout environment is a prototype used to test the framework's abstractions and reinforcement-learning workflow. The agent does **not** reliably learn Breakout yet.  
+> * The agent did learn how to solve discrete maze environment (refer to `maze_solver.py` to experiment with the actual code).  
+> * The current Breakout environment is a prototype used to test the framework's abstractions and reinforcement-learning workflow. The agent does **not** reliably learn Breakout yet.  
 
 ---
 
