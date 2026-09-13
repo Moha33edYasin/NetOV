@@ -1,12 +1,12 @@
 # NetOV
 
-**NetOV** is an experimental reinforcement-learning environment framework built on top of my neural-network framework, **[NetJet](../NetJet)**.
+**NetOV** is an experimental reinforcement-learning environment framework built on top of my neural-network framework, **[NetJet](https://github.com/Moha33edYasin/NetJet/)**.
 
 The goal of NetOV is to provide a lightweight way to construct environments, agents, state representations, actions, rewards, and training loops around neural networks without relying on high-level reinforcement-learning frameworks.
 
-> **Status:** Experimental / Work in Progress
-> The agent did learn how to solve discrete maze environment.
-> The current Breakout environment is a prototype used to test the framework's abstractions and reinforcement-learning workflow. The agent does **not** reliably learn Breakout yet.
+> **Status:** Experimental / Work in Progress  
+> The agent did learn how to solve discrete maze environment (refer to `maze_solver.py` to experiment with the actual code).  
+> The current Breakout environment is a prototype used to test the framework's abstractions and reinforcement-learning workflow. The agent does **not** reliably learn Breakout yet.  
 
 ---
 
@@ -19,20 +19,19 @@ NetOV
  ├── Environment
      ├─── State
      ├─── Reward system
- ├── Renderer
-
+     ├── Renderer
  ├── Object
  ├── Agent
      ├─── Action handling
           └── RL training logic
-          │
-          ▼
-      NetJet
- ├── Neural network
- ├── Layers
- ├── Activations
- ├── Optimizers
- └── Loss functions
+              │
+              ▼
+            NetJet
+       ├── Neural network
+       ├── Layers
+       ├── Activations
+       ├── Optimizers
+       └── Loss functions
 ```
 
 The `markov` module inside NetOV imports NetJet internally, allowing an environment and its agent to use NetJet's neural-network components directly.
@@ -89,7 +88,7 @@ world_map = [
     [_, _, _, _, _, _, _, _, _, _, _, _, _, _],
     [0, _, _, _, _, _, _, _, _, _, _, _, _, 0],
     [0, _, _, _, _, _, _, _, _, _, _, _, _, 0],
-    [0, 0, 0, _, _, _, _, _, _, _, 0, 0, 0],
+    [0, 0, 0, _, _, _, _, _, _, _, _, 0, 0, 0],
     [0, 0, 0, 0, _, _, _, _, _, _, 0, 0, 0, 0],
     [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     ...
@@ -113,7 +112,7 @@ This allows the environment representation and rendering logic to remain separat
 
 ## Core Abstractions
 
-### `Environment`
+### Environment
 
 `Environment` manages the simulation itself.
 
@@ -149,7 +148,7 @@ env.run(
 
 ---
 
-### `Agent`
+### Agent
 
 An `Agent` represents the learning entity interacting with the environment.
 
@@ -358,8 +357,9 @@ renderer.configuer_debugger(
 )
 ```
 
-This is useful for inspecting what the agent is choosing during training rather than treating the learning process as a black box.
-Inspecting is done by pressing the SPACE bar while the simulation is running.
+> [!NOTE]
+> This is useful for inspecting what the agent is choosing during training rather than treating the learning process as a black box. Inspecting is done by pressing the `SPACE` bar while the simulation is running.
+
 ---
 
 ## Why I Built NetOV
@@ -385,7 +385,7 @@ Learning update
      ↺
 ```
 
-This project is therefore also an engineering experiment: I am testing how a general-purpose neural-network framework can be extended into an environment for reinforcement-learning experiments.
+This project is my engineering experiment: I am testing how a general-purpose neural-network framework can be extended into an environment for reinforcement-learning experiments.
 
 ---
 
@@ -406,23 +406,6 @@ The current goal is **not** to present a finished RL library, but to build and e
 
 ---
 
-## Planned Direction
-
-Future experiments are intended to improve the framework itself as well as its learning capabilities.
-
-Potential directions include:
-
-* Improving the Breakout state representation
-* Refining reward shaping
-* Experimenting with alternative RL formulations
-* Improving collision and physics handling
-* Testing additional environments
-* Reducing training overhead
-* Expanding the agent/environment interface
-* Investigating more flexible state-action representations
-
----
-
 ## Dependencies
 
 The current prototype uses:
@@ -431,9 +414,8 @@ The current prototype uses:
 * NumPy
 * Pygame
 * NetJet
-* C++ components used internally by NetJet where applicable
 
-NetOV itself provides the environment and reinforcement-learning abstractions, while NetJet provides the underlying neural-network functionality.
+**NetOV** itself provides the environment and reinforcement-learning abstractions, while **NetJet** provides the underlying neural-network functionality.
 
 ---
 
