@@ -30,46 +30,37 @@ world_map = [
 cell_w = W / len(world_map[0])
 cell_h = H / len(world_map)
 
-def arrow_labels(renderer, action_idx, state):
-    j, i = state
+def arrow_labels(renderer, action_idx, coordinate):
+    j, i = coordinate
     cell_w, cell_h = renderer.CELL_SIZE
 
     if action_idx == 0:
-        p1 = (j * cell_w + cell_w / 2, i * cell_h + cell_h / 2),
-        p2 = (j * cell_w + .9 * cell_w, i * cell_h + cell_h / 2)
+        p1 = (j, i)
+        p2 = (j + 0.4 * cell_w, i)
 
     elif action_idx == 1:
-        p1 = (j * cell_w + cell_w / 2, i * cell_h + cell_h / 2),
-        p2 = (j * cell_w + .1 * cell_w, i * cell_h + cell_h / 2)
+        p1 = (j, i)
+        p2 = (j - 0.4 * cell_w, i)
 
     elif action_idx == 2:
-        p1 = (j * cell_w + cell_w / 2, i * cell_h + cell_h / 2)
-        p2 = (j * cell_w + cell_w / 2, i * cell_h + .1 * cell_h)
+        p1 = (j, i)
+        p2 = (j, i - 0.4 * cell_h)
         
     elif action_idx == 3:
-        p1 = (j * cell_w + cell_w / 2, i * cell_h + cell_h / 2)
-        p2 = (j * cell_w + cell_w / 2, i * cell_h + .9 * cell_h)
+        p1 = (j, i)
+        p2 = (j, i + 0.4 * cell_h)
 
     pygame.draw.line(renderer.screen, renderer.colors[action_idx], p1, p2, int(cell_w / 25))
     pygame.draw.circle(renderer.screen, renderer.colors[action_idx], p2, cell_w / 15)
 
-def label_positioning(renderer, state):
-    return state[1] * renderer.CELL_SIZE[0] + renderer.CELL_SIZE[1] / 8
+def label_y(renderer, coordinate):
+    return coordinate[1] - 3/8 * renderer.CELL_SIZE[1]
 
-def label_spacing(renderer, state):
-    return state[0] * renderer.CELL_SIZE[0] + renderer.CELL_SIZE[1] / 8
+def label_x(renderer, coordinate):
+    return coordinate[0] - renderer.CELL_SIZE[0] / 2 + renderer.CELL_SIZE[1] / 8
 
 def render_player(screen):
     if agent.record:
-        pygame.draw.line(screen, 'red', (
-            agent.rel_start[0] * cell_w + cell_w / 2, 
-            agent.rel_start[1] * cell_h + cell_h / 2
-            ),
-            (
-                agent.record[0][0][0] * cell_w + cell_w / 2, 
-                agent.record[0][0][1] * cell_h + cell_h / 2
-            ), 3)
-
         for state, _, _, state_after, _ in agent.record[:-1]:
             pygame.draw.line(screen, 'red', (
                 state[0] * cell_w + cell_w / 2, 
@@ -79,26 +70,28 @@ def render_player(screen):
                     state_after[1] * cell_h + cell_h / 2
                     ), 3)
 
-    pygame.draw.circle(screen, 'red', (
-                                    agent.state[0] * cell_w + cell_w / 2,
-                                    agent.state[1] * cell_h + cell_h / 2
-                                    ), cell_w / 6, 0)
+    pygame.draw.circle(screen, 'red', agent.pos, cell_w / 6, 0)
+
+def right(agent): agent.pos[0] += cell_w
+def left(agent): agent.pos[0] -= cell_w
+def up(agent): agent.pos[1] -= cell_h
+def down(agent): agent.pos[1] += cell_h
 
 # agent setup
-goal = (9, 9)
+goal = (W - cell_w / 2, H - cell_h / 2)
 
-agent = Agent(start_state=[0, 0])
+agent = Agent(pos=[cell_w / 2, cell_h / 2])
+
 env = Environment(
     world_map, 
-    LAZY_OBJXXT=lazy_render, 
+    lazy_render=lazy_render,
     BLOCKED_SPACE=blocked_code, 
     CELL_SIZE=[cell_w, cell_h]
 )
 
-agent.set_renderer(render_player)
-agent.interpet_state(lambda agent : (agent.state[0] * cell_w, agent.state[1] * cell_h), "pos")
-agent.lower_bound_state([0, 0])
-agent.upper_bound_state([len(world_map[0]), len(world_map)])
+agent.render_f = render_player
+agent.limit("pos", ([cell_w / 2, cell_h / 2], [W - cell_w / 2, H - cell_h / 2]))
+
 agent.set_nn(
     nn(
         Flatten(),
@@ -110,40 +103,39 @@ agent.set_nn(
 
 renderer = Renderer(
     RES=(W, H),
-    init=pygame.init, 
+    init=pygame.init,
     quit=pygame.quit
 )
 
 renderer.configuer_debugger(
     figure=arrow_labels,
-    info_y=label_positioning,
-    info_x=label_spacing,
+    info_y=label_y,
+    info_x=label_x,
     colors=["orange", "yellow", "purple", "blue"],
     labels=["R", "L", "U", "D"]
 )
 
 agent.define_actions(
-    lambda s : s + [1, 0], # right
-    lambda s : s + [-1, 0], # left
-    lambda s : s + [0, -1], # up
-    lambda s : s + [0, 1],  # down
-    done_f= lambda : np.array_equal(agent.state, goal),
+    right,
+    left,
+    up,
+    down,
+    breaklaw_penalty=-1,
+    done_f= lambda : np.array_equal(agent.pos, goal),
     fail_f=lambda : False
 )
 
-env.define_reward(
-    lambda agent, a : 0 if agent.done() else -1, # get as quickly as possible!
-    lambda agent, a : -2
-)
+env.state_f = lambda env, agent : np.array(agent.norm_pos)
+env.reward_f = lambda env, agent : 0 if agent.done() else -1 # get as quickly as possible!
 
 env.add_agent(agent)
 env.add_renderer(renderer)
 
 agent.compile(
+    batch_size=32,
     optim=Adam(lr=5e-4),
     cost=MSE, # J(θ) for π(s)
     dcost=None, # ∇ J(θ) for π(s)
-    batch_size=32,
     update_tqn_every=200,
     buffer_capcity=10_000,
     record_capcity=20
@@ -152,9 +144,7 @@ agent.compile(
 env.run(
     episodes=500,
     gamma=0.99,
-    ε_range=(1, 0.05),
+    ε_range=(0.9, 0.05),
     ε_clip_ratio=.4,
     fps=1000
 )
-
-# ! TRY TO BRANCH NETJET AND ADD INDEPENDENCY FROM THE SEQUENCTIAL NN CLASS.
