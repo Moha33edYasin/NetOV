@@ -5,7 +5,7 @@
 The goal of NetOV is to provide a lightweight way to construct environments, agents, state representations, actions, rewards, and training loops around neural networks without relying on high-level reinforcement-learning frameworks.
 
 > **Status:** Experimental / Work in Progress  
-> * The agent did learn how to solve discrete maze and breakout game (refer to `maze_solver.py` and `breakout.py`to experiment with the actual code).
+> * The agent did learn how to solve discrete maze and breakout game (refer to `maze_solver.py` and `breakout.py` to experiment with the actual code).
 
 ---
 
@@ -17,10 +17,16 @@ NetOV does not implement its neural-network functionality independently. Instead
 NetOV
  ├── Environment
      ├─── State
-     ├─── Reward system
- ├── Renderer
+     ├─── General Reward system
+     ├─── Objects Management
+     ├─── Rendering System
+          └─── Renderer
  ├── Object
+     ├─── Static property defining
+     ├─── Property tracking
+     ├─── collision mechanics
  ├── Agent
+     ├─── Instantenous reward/penalty recieving. 
      ├─── Action handling
           └── RL training logic
               │
@@ -103,53 +109,48 @@ W, H = 900, 600
 FPS = 60
 ```
 Then, we have to specify the blocks.  
-We use `1` as a unique code that will help us build faster, and it will be a blocked space, meaning the agent cannot move to.  
+We use postive integars as unique codes that will help us build faster, and it will be a blocked space, meaning the agent cannot move to.  
 
 ```python
-_ = 1
-blocked_code = [_]
+BLOCED_CODE = [1, 2, 3, 4, 5, 6]
 ```
-To render these static objects (which will refer to as lazy objects), we make a dictonary that contain all unique codes and map them to a custom render function.  
+[!NOTE]
+> In our breakout experiment here, this is meaningless, but I just want to make it clear that the peddel (the agent) won't move to the bricks.
+
+To render these static objects (which we will refer to as **lazy objects**), we make a dictonary that contain all unique codes and map them to a custom render function.  
 
 ```python
-lazy_render = {
-    _ : lambda screen, obj: pygame.draw.rect(screen, "red", [*obj.pos, obj.width-1, obj.height-1]),
+LAZY_RENDERS = {
+    1 : lambda screen, obj: pygame.draw.rect(screen, "red", [*obj.pos, obj.width-1, obj.height-1]),
+    2 : lambda screen, obj: pygame.draw.rect(screen, "orange", [*obj.pos, obj.width-1, obj.height-1]),
+    3 : lambda screen, obj: pygame.draw.rect(screen, "brown", [*obj.pos, obj.width-1, obj.height-1]),
+    4 : lambda screen, obj: pygame.draw.rect(screen, "yellow", [*obj.pos, obj.width-1, obj.height-1]),
+    5 : lambda screen, obj: pygame.draw.rect(screen, "green", [*obj.pos, obj.width-1, obj.height-1]),
+    6 : lambda screen, obj: pygame.draw.rect(screen, "blue", [*obj.pos, obj.width-1, obj.height-1])
 }
 ```
 
-> [!NOTE]
-> NetOV `Renderer` currently use Pygame as the its main rendering engine. If you used NetOV `Renderer`, you have to use Pygame when building your rendering functions.
+> [!NOTE]  
+> `Renderer` currently use Pygame as the its main rendering engine. If you used NetOV `Renderer`, you have to use Pygame when building your rendering functions.
 
-Next, we make a simple grid to low represent the game board.
+Next, we make a simple grid (`40x20` with `6` rows of brick) to low represent the game board.
 
 ```python
-world_map = [
-    [0, _, _, _, _, _, _, _, _, _, _, _, _, 0],
-    [_, _, _, _, _, _, _, _, _, _, _, _, _, _],
-    [0, _, _, _, _, _, _, _, _, _, _, _, _, 0],
-    [0, _, _, _, _, _, _, _, _, _, _, _, _, 0],
-    [0, 0, 0, _, _, _, _, _, _, _, _, 0, 0, 0],
-    [0, 0, 0, 0, _, _, _, _, _, _, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-]
+world_map = create_board(40, 20, 6)
 ```
-> [!Note]
-> You can experiment with any layout you want. This is only an example.
 
-Then, we calculate cell width `rect_w` and height `rect_h` as well as the peddel width `platform_width` and height `platform_height`.
+> [!Note]
+> * You can check the implementation of `create_board` in the `breakout_setting.py`, but it should be straightforward.
+> * You can experiment with any layout you want. This is only an example.
+
+Then, we calculate cell width `CELL_W` and height `CELL_H` as well as the peddel width `PEDDEL_W` and height `PEDDEL_H`.
 
 ```python
-rect_w = W / (len(world_map[0]))
-rect_h = H / (len(world_map))
-platform_height = 0.5 * rect_h
-platform_width = 2 * rect_w
+CELL_W = W / 40
+CELL_H = H / 20
+
+PEDDEL_H = 0.6 * CELL_H
+PEDDEL_W = 2 * CELL_W
 ```
 
 **The goal** is to **hit all the blocks** with the ball by moving the peddel so the ball bounce off toward them.   
@@ -175,10 +176,12 @@ To define environment, you pass the map, lazy rendering dictonary, blocked space
 
 ```python
 env = Environment(
-    world_map,
-    lazy_render=lazy_render,
-    BLOCKED_SPACE=blocked_code,
-    CELL_SIZE=[rect_w, rect_h]
+    WORLD_MAP,
+    require_live_map=True,
+    lazy_code=BLOCED_CODE, # meaningless here, lol!
+    lazy_render=LAZY_RENDERS,
+    blocked_space=BLOCED_CODE,
+    cell_size=[CELL_W, CELL_H]
 )
 ```
 
@@ -196,19 +199,34 @@ The environment can then run multiple episodes:
 
 ```python
 env.run(
-    episodes=80,
+    episodes=60_000,
     gamma=.99, # discount on future reward
-    ε_range=(.9, .05),
-    ε_clip_ratio=.75, # after what percentage of the episodes ε fall to the end of the interval (in this case, 0.05)
+    ε_range=(1, .05),
+    ε_clip_ratio=.95, # after what percentage of the episodes ε fall to the end of the interval (in this case, 0.05) or what is called the decay rate.
     fps=FPS
 )
 ```
+
+### Object
+We define our ball. (note: you can put any attribute you need to store when initializing `Object` or `Agent`, you think of it as another way to construct your python class)
+
+```python
+ball = Object(
+    pos=[W / 2, H / 2],
+    radius=BALL_RADIUS, # this will be used to align the label when rendering
+    speed=NORMAL_SPEED, # the first ball speed for the breakout
+    direction=random_direction,
+    n_peddel_hits=0
+)
+```
+
+Its movement is updated independently of the agent.
 
 ---
 
 ### Agent
 
-An `Agent` represents the learning entity interacting with the environment.
+An `Agent` is basically an object that represents the learning entity interacting with the environment.
 
 The agent can define:
 
@@ -222,71 +240,67 @@ The agent can define:
 Here, we define our agent as follow:
 ```python
 agent = Agent(
-    pos=[len(world_map[0]) * rect_w / 2, H - rect_h],
-    width=platform_width, 
-    height=platform_height
+    pos=[NUM_COL * CELL_W / 2, H - CELL_H],
+    width=PEDDEL_W,
+    height=PEDDEL_H
 )
 ```
 You can bound certain properties of the agent. In our breakout example, we write:
 
 ```python
-agent.limit("pos", ([0, H - rect_h], 
-                    [W - platform_width, H - rect_h]))
+agent.track("pos", ([0, H - CELL_H], 
+                    [W - PEDDEL_W, H - CELL_H]))
 ```
-
-
-### Object
-We define our ball. (note: you can put any attribute you need to store when initializing `Object` or `Agent`, you think of it as another way to construct your python class)
+Also, passing the argument `track_change=True` to `track`, will automatically track property change. We can use this calculate the rate as follow:  
 
 ```python
-ball = Object(
-    pos=[W / 2, H / 2],
-    radius=rect_w / 5,
-    speed=FPS * rect_w * 0.35,
-    direction=random_direction,
-)
+dt = 0.05 # this only an example
+agent.track("pos", ([0, H - CELL_H], 
+                    [W - PEDDEL_W, H - CELL_H]), track_change=True)
+
+print("Agent velocity:", agent.pos.delta / dt)
 ```
 
-Its movement is updated independently of the agent.
+[!IMPORTANT]
+> Using automatic change track with `change_track=True` will affect how the collision mechanics work. As the older property value is used to calculate the change, it is highly not recommended to set `change_track=True` if the object have a random or frequently changing motion.
 
+## Core Concepts
 ---
-
 ### State Representation
 
-This Breakout experiment uses the paddle's normalized position together with ball normalized position, direction, and live blocks' normalized positions.
+This Breakout experiment uses the paddle's position together with its width, ball position and velocity, and an integar map of the enviroment with the available bricks.  
 
-All these are combined into a single flatten array that will be passed
-to the agent learning system.
+All these are normalized combined into a single flatten array that will be passed to the agent learning system.  
 
 ```python
 def capture_state(env, agent):
-    blocks_loc = np.array([obj.pos if obj in env.live_lazy_objects else [0.0, 0.0] for obj in env.lazy_objects])
-    n_arr = 1 / np.max(env.lazy_loc, axis=0)
-
     return np.concatenate(
         [
-            [agent.pos[0] / (W - agent.width)],
-            np.multiply(ball.pos, [1 / (W - ball.radius), 1 / (H - ball.radius * 0.5)]),
-            ball.direction,
-            np.multiply(blocks_loc, n_arr).ravel()
+            [agent.pos[0] / (W - agent.width), agent.width / PEDDEL_W],
+            np.multiply(ball.pos, [1 / (W - ball.radius), 1 / H]),
+            np.multiply(ball.direction, ball.speed / FAST_SPEED3),
+            env.live_map.ravel() / env.map.max()
         ]
     )
 ```
-We inform the environement with our definition, simply by writing:
+We inform the environement with our definition, simply by writing:  
+
 ```python
 env.state_f = capture_state
 ```
+
 This is deliberately kept lightweight (no CNN), as I was curious about knowing what could MLP perform in this scenario.
 
 ---
 
 ### Actions
 
-The agent currently has two actions (right and left):
+The agent currently has three actions (right, no action, or left):
 
 ```python
 agent.define_actions(
     peddel_right,
+    peddel_idle, # void function
     peddel_left,
     breaklaw_penalty=-1,
     done_f=lambda : len(env.live_lazy_objects) == 0,
@@ -305,7 +319,7 @@ agent.set_nn(
         Flatten(),
         Dense(64, Leaky_ReLU()),
         Dense(64, Leaky_ReLU()),
-        Dense(2)
+        Dense(3)
     )
 )
 ```
@@ -316,13 +330,12 @@ Compiling the network for our current breakout experiment:
 
 ```python
 agent.compile(
-    batch_size=32,
+    batch_size=64,
     optim=Adam(lr=5e-4),
     cost=MSE,
     dcost=None,
-    update_tqn_every=200,
-    buffer_capcity=10_000,
-    record_capcity=20
+    update_tqn_every=2000,
+    buffer_capcity=10_000
 )
 ```
 
@@ -331,14 +344,14 @@ This experiment uses experience replay, a target-network update mechanism, and a
 ---
 
 ## Reward System
-The agent will get `-2` if it `fail` (aka. the ball fall off); `-1` for trying cross screen boundaries, `+1` if the ball bounce of the peddel, `+2` if the ball collided with a block.
+The agent will get `-5` if it `fail` (aka. the ball fall off); `-0.1` for trying cross screen boundaries, `+0.5` if the ball bounce of the peddel, `+2` if the ball hit with a brick in the 6th level and it is increase by `+1` for hitting a higher level, `+10` if all bricks are successfuly cleared.
 
 The general reward function is discourage failing:  
 
 ```python
-env.reward_f = lambda env, agent: -2 if agent.fail() else 0
+env.reward_f = lambda env, agent: -5 if agent.fail() else (10 if agent.done() else 0)
 ```
-while `breaklaw_penalty` in `agent.define_actions` is set to `-1`.  
+while `breaklaw_penalty` in `agent.define_actions` is set to `-0.1`.  
 And finally, when we update the ball, we grant reward to desirable hits:  
 
 ```python
@@ -347,15 +360,16 @@ def ball_update(dt):
     ...
 
     ''' The peddel hit the ball '''
-    if ball.collide(agent, offset_down=-agent.height / 2, offset_right=ball.radius, offset_left=ball.radius):
-        agent.grant(1) # grant a reward of +1 for hitting the ball
+    if ball.collide(agent, dt=dt, offset_down=-ball.radius):
+        agent.grant(0.5) # grant a reward of +0.5 for hitting the ball
         ...
 
     ''' The ball hit the blocks '''
-    if ball.collide(block):
-        agent.grant(2) # grant the agent +2 points for hitting a block 
+    target_brick = ball.multi_collide(env.live_lazy_objects, dt=dt)
+    if target_brick != None:
+        agent.grant(8 - (target_brick.norm_pos[1] - int(NUM_ROW / 6))) # grant the agent points for hitting a brick in a certain level
         ...
-        env.kill_lazy_object(block) # remove the block from the running environment 
+        env.kill_lazy_object(target_brick) # remove the brick from the running environment 
 ```
 To inform the ball object with our update function above, we set:  
 
@@ -364,16 +378,22 @@ ball.update_f = ball_update
 ```
 ---
 
-## Physics and Environment Logic
-Collision handling determines whether the ball:
+## Collision
+You can check if two object collided by calling `obj1.collide(obj2)` which will return `True` if there is a collision and `False` if not. You can pass `dt` if the enviroment is changing with respect to the time and You can adjust the collision box by passing any of `offset_left`, `offset_right`, `offset_top`, and/or `offset_down`.  
 
-* Reaches a screen boundary
-* Hits the paddle
-* Hits a block
-* Changes direction
-* Removes a block from the environment
+There are two types of collision that I built `collide` to detect:  
+1. **By-bound:** Happen when `obj1` touches or enter the collision box area of `obj2`.  
+2. **Bypass:** Happen when `obj1` pass through or jump over `obj2`. In a discerte motion (what every computer does), this extremely important.  
 
-Blocks are removed after successful collision:
+You can also use `obj1.multi_collide(objects)` with multiple objects. You pass `dt` and the collision box offsets the same way as `collide`.  
+
+In our breakout expriement, collision handling determines whether the ball:
+
+* Hits the paddle -> Changes direction
+* Hits a brick -> Changes direction -> Removes a brick from the environment
+
+
+Bricks are removed after successful collision:
 
 ```python
 env.kill_lazy_object(obj)
@@ -403,12 +423,14 @@ Objects and agents can define their own rendering functions:
 ball.render_f = ball_render
 agent.renderer_f = peddel_render
 ```
-
-The current prototype also includes a debugging overlay that visualizes the agent's available actions in all possible states based on their `Q` return, if there is a restriction on the agent's, subject to debugging, position. Otherwise, it visualize the qaulity of the available actions in the current state:
+[!NOTE]
+> * The current prototype also includes a debugging overlay that visualizes the agent's available actions in all possible states based on their `Q` return, if there is a restriction via `track` on the agent's position subject to debugging. Otherwise, it visualizes the Q of the available actions in the current state.  
+> * The net reward will be shown near each agent.  
+> * The hyperparamter (ε and gamma) will be shown in the top-left corner of the screen.  
 
 ```python
 renderer.configuer_debugger(
-    figure=arrow_labels, # function to draw figure (here, it an arrow pointing to most likely action to accur)
+    figure=arrow_labels, # function to draw figure (here, it an arrow pointing to direction of the most likely next action)
     info_y=label_y, # function of y coordinate of the info written with respect to the position of an agent in a certain state 
     info_x=label_x, # function of x coordinate of the info written with respect to the position of an agent in a certain state
     colors=["orange", "purple"], # line colors (also affect the figure color)
@@ -417,41 +439,13 @@ renderer.configuer_debugger(
 ```
 
 > [!NOTE]  
-> This is useful for inspecting what the agent is choosing during training rather than treating the learning process as a black box.  
-> Inspecting is done by pressing the `SPACE` bar while the simulation is running.  
-> For multiple agents, you can debug any agent by pressing keyboard key corresponding to that agent index, and then `SPACE` to inspect.
-
----
-
-## Why I Built NetOV
-
-NetOV is an extension of my work on NetJet.
-
-While developing neural networks from scratch, I wanted to explore reinforcement learning without immediately moving to a high-level RL framework. As I am enginnering the environment interface, I experiment with the entire pipeline:
-
-```text
-Environment
-     ↓
-State representation
-     ↓
-Neural network
-     ↓
-Action
-     ↓
-Environment transition
-     ↓
-Reward
-     ↓
-Learning update
-     ↺
-```
-
-This project is my personal research and engineering project: I am testing how a general-purpose neural-network framework can be extended into an environment for reinforcement-learning experiments.
+> * This is useful for inspecting what the agent is choosing during training rather than treating the learning process as a black box.
+> * Inspecting is done by pressing the `SPACE` bar while the simulation is running.  
+> * For multiple agents, you can debug any agent by pressing keyboard key corresponding to that agent index (e.g. `1` for the first agent, and so on), and then `SPACE` to inspect.
 
 ---
 
 ## One Important Caveat
-
 NetOV is still under active development.
 
 The current goal is **not** to present a finished RL library, but to build and evaluate the underlying abstractions through increasingly complex experiments.

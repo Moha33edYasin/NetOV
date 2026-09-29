@@ -8,10 +8,12 @@ from time import perf_counter
 
 
 class RestrictedListParam(list):
-    def __init__(self, data, limits, agent=None):
+    def __init__(self, data, limits, obj=None, track_change=False):
         super().__init__(data)
         self.lower_limit, self.upper_limit = limits
-        self.agent = agent
+        self.agent = obj
+        self.track_change = track_change
+        if track_change: self.delta = []
 
     @property
     def env(self): return self.agent.env
@@ -31,12 +33,84 @@ class RestrictedListParam(list):
                 super().__setitem__(key, original_value)
                 self.agent.breaklaw_punish()
 
+        if self.track_change:
+            self.delta[key] = super().__getitem__(key) - original_value
+
+
 class Object:
     def __init__(self, **kwargs):
-        self.kwargs = kwargs
-        self.update_f = None
-        self.render_f = None
+        self.__dict__["_kept_attrs"] = []
+        self.__dict__["_restricted_attrs"] = {}
+        self.__dict__["_tracked_attrs"] = []
+        self.__dict__["env"] = None
+        
+        self.__dict__["kwargs"] = kwargs
+        self.__dict__["update_f"] = None
+        self.__dict__["render_f"] = None
+        
+        self.__dict__["bound_collisions"] = {}
+        self.__dict__["pass_collisions"] = {}
+        self.__dict__["intersections"] = []
+        
         for attr, val in kwargs.items():
+            if callable(val):
+                self.__dict__[attr] = val()
+            else:
+                self.__dict__[attr] = deepcopy(val)
+
+    @property
+    def norm_pos(self):
+        return [int(x / cx) for x, cx in zip(self.pos, self.env.CELL_SIZE)]
+
+    def __setattr__(self, name, value):
+        if hasattr(self, name): 
+            original_value = super().__getattribute__(name)
+            if name in self._restricted_attrs:
+                lower_limit, upper_limit = self._restricted_attrs[name]
+
+                if np.any(value < lower_limit) or np.any(value > upper_limit):
+                    self.breaklaw_punish()
+
+                if isinstance(value, (np.ndarray, list)):
+                    track = name in self._tracked_attrs
+                    value = RestrictedListParam(np.clip(value, a_min=lower_limit, a_max=upper_limit), [lower_limit, upper_limit], obj=self, track_change=track)
+                else:
+                    value = np.clip(value, a_min=lower_limit, a_max=upper_limit)
+
+                if hasattr(self, "env") and self.env != None:
+                    super().__setattr__(name, value)
+
+                    if self.env.map[*self.norm_pos[::-1]] in self.env.BLOCKED_SPACE:
+                        ''' Failed to set the attribute '''
+                        super().__setattr__(name, original_value)
+                        self.breaklaw_punish()
+            else:
+                super().__setattr__(name, value)
+
+            if name in self._tracked_attrs:
+                attr_value = self.__getattribute__(name)
+                
+                if type(attr_value) == RestrictedListParam:
+                    attr_value.delta = np.subtract(attr_value, original_value)
+                else:
+                    setattr(self, f"{name}_delta", attr_value - original_value)
+        else:
+            super().__setattr__(name, value)
+
+    def keep(self, *args):
+        for arg in args: self._kept_attrs.append(arg)
+
+    def track(self, attr_name, limits=None, track_change=False):
+        if limits != None: 
+            self._restricted_attrs[attr_name] = limits
+            attr = getattr(self, attr_name)
+            if isinstance(attr, (np.ndarray, list)):
+                super().__setattr__(attr_name, RestrictedListParam(attr, limits, obj=self, track_change=track_change))
+
+        if track_change: self._tracked_attrs.append(attr_name)
+
+    def init(self):
+        for attr, val in self.kwargs.items():
             if callable(val):
                 setattr(self, attr, val())
             else:
@@ -44,13 +118,20 @@ class Object:
 
     def reset(self):
         for attr, val in self.kwargs.items():
-            if callable(val):
-                setattr(self, attr, val())
-            else:
-                setattr(self, attr, deepcopy(val))
+            if attr not in self._kept_attrs:
+                if callable(val):
+                    setattr(self, attr, val())
+                else:
+                    setattr(self, attr, deepcopy(val))
 
-    def collide(self, obj, offset_left=0, offset_right=0, offset_top=0, offset_down=0):
-        ow, oh = 0, 0
+    def get_velocity(self, dt):
+        if type(self.pos) == RestrictedListParam and self.pos.track_change:
+            return self.pos.delta / dt
+        elif hasattr(self, "pos_delta"):
+            return self.pos_delta / dt
+        return [0, 0]
+
+    def get_collision_rect(self, offset_left=0, offset_right=0, offset_top=0, offset_down=0):
         w, h = 0, 0
 
         if hasattr(self, "width"):
@@ -60,27 +141,217 @@ class Object:
         elif hasattr(self, "radius"):
             w, h = self.radius, self.radius
 
-        if hasattr(obj, "width"):
-            ow = obj.width
-        if hasattr(obj, "height"):
-            oh = obj.height
-        elif hasattr(obj, "radius"):
-            ow, oh = obj.radius, obj.radius
+        left = self.pos[0] - offset_left
+        right = self.pos[0] + w + offset_right
+        top = self.pos[1] - offset_top
+        down = self.pos[1] + h + offset_down
+        
+        return left, right, top, down
 
-        lower_bound_x = obj.pos[0] - w - offset_left
-        upper_bound_x = obj.pos[0] + ow + w + offset_right
-        lower_bound_y = obj.pos[1] - h - offset_top
-        upper_bound_y = obj.pos[1] + oh + h + offset_down
+    def collision_lines_intersect(self, m1, m2, p1, p2, left, right, top, down):
+        x1, y1 = p1
+        x2, y2 = p2
 
-        return ((lower_bound_x <= self.pos[0] <= upper_bound_x) and
-                (lower_bound_y <= self.pos[1] <= upper_bound_y))
+        if (m1 == m2 == None and x2 == x1):
+            return True
+        elif m1 == None:
+            X = x1
+            Y = m2 * (X - x2) + y2
+        elif m2 == None:
+            X = x2
+            Y = m1 * (X - x1) + y1
+        elif m1 == m2 and y1 == m1 * (x1 - x2) + y2:
+            return True        
+        else:
+            X = (y2 - y1 - (m2 * x2 - m1 * x1)) / (m1 - m2)
+            Y = m1 * (X - x1) + y1
+
+
+        if top <= Y <= down and left <= X <= right:
+            self.intersections.append((X, Y))
+            return True
+        return False
+
+    def by_bound_collide(self, left, right, top, down):
+        return left <= self.pos[0] <= right and top <= self.pos[1] <= down
+
+    def by_pass_collide(self, δ1, δ2, left, right, top, down):
+        x1, y1 = self.pos.copy()
+        x2, y2 = self.pos.copy() + δ1
+
+        if δ2[0] > 0:
+            ox1 = _ox1 = left
+            uox1 = _uox1 = right
+            ox2 = _ox2 = right + δ2[0]
+            uox2 = _uox2 = left + δ2[0]
+        else:
+            ox1 = _ox1 = right
+            uox1 = _uox1 = left
+            ox2 = _ox2 = left + δ2[0]
+            uox2 = _uox2 = right + δ2[0]
+
+        if δ2[1] > 0:
+            oy1 = uoy1 = top
+            _oy1 = _uoy1 = down
+            oy2 = uoy2 = down + δ2[1]
+            _oy2 = _uoy2 = top + δ2[1]
+        else:
+            oy1 = uoy1 = down
+            _oy1 = _uoy1 = top
+            oy2 = uoy2 = top + δ2[1]
+            _oy2 = _uoy2 = down + δ2[1]
+
+        if abs(x1 - left) > abs(x1 - right):
+            near_x = right
+            far_x = left
+        else:
+            near_x = left
+            far_x = right
+
+        if abs(y1 - top) > abs(y1 - down):
+            near_y = down
+            far_y = top
+        else:
+            near_y = top
+            far_y = down
+
+        if (
+            ((x1 <= near_x and far_x <= x2 or x1 >= near_x and far_x >= x2) and
+             (y1 <= near_y and far_y <= y2 or y1 >= near_y and far_y >= y2))
+            
+            or
+            
+            ((near_x <= x1 <= far_x or near_x >= x1 >= far_x or 
+              near_x <= x2 <= far_x or near_x >= x2 >= far_x) and (y1 <= near_y <= y2 or y1 >= near_y >= y2))
+            
+            or
+            
+            ((near_y <= y1 <= far_y or near_y >= y1 >= far_y or 
+              near_y <= y2 <= far_y or near_y >= y2 >= far_y) and (x1 <= near_x <= x2 or x1 >= near_x >= x2))
+        ):
+            dx, dy = δ1
+
+            odx = ox2 - ox1
+            ody = oy2 - oy1
+
+            _odx = _ox2 - _ox1
+            _ody = _oy2 - _oy2
+
+            uodx = uox2 - uox1
+            uody = uoy2 - uoy2
+
+            _uodx = _uox2 - _uox1
+            _uody = _uoy2 - _uoy2
+
+            m = dy / dx if dx != 0 else None
+            om = ody / odx if odx != 0 else None
+            _om = _ody / _odx if _odx != 0 else None
+            uom = uody / uodx if uodx != 0 else None
+            _uom = _uody / _uodx if _uodx != 0 else None
+
+            self.intersections.clear()
+            return (    
+                self.collision_lines_intersect(m, om, (x1, y1), (ox1, oy1), left, right, top, down) |
+                self.collision_lines_intersect(m, _om, (x1, y1), (_ox1, _oy1), left, right, top, down) |
+                self.collision_lines_intersect(m, uom, (x1, y1), (uox1, uoy1), left, right, top, down) |
+                self.collision_lines_intersect(m, _uom, (x1, y1), (_uox1, _uoy1), left, right, top, down)
+            )
+
+    def collide(self, obj, dt=1, offset_left=0, offset_right=0, offset_top=0, offset_down=0):
+        w, h = 0, 0
+        if hasattr(self, "width"):
+            w = self.width
+        if hasattr(self, "height"):
+            h = self.height
+        elif hasattr(self, "radius"):
+            w, h = self.radius, self.radius
+
+        left, right, top, down = obj.get_collision_rect( 
+                                                        offset_left + w, 
+                                                        offset_right + w,
+                                                        offset_top + h,
+                                                        offset_down + h
+                                                    )
+
+        if hasattr(self, "velocity"):
+            v = self.velocity
+        elif hasattr(self, "direction") and hasattr(self, "speed"):
+            v = np.multiply(self.direction, self.speed)
+        else:
+            v = self.get_velocity(dt)
+
+        if hasattr(obj, "velocity"):
+            ov = obj.velocity
+        elif hasattr(obj, "direction") and hasattr(obj, "speed"):
+            ov = np.multiply(obj.direction, obj.speed)
+        else:
+            ov = obj.get_velocity(dt)
+
+        return (self.by_bound_collide(left, right, top, down) or 
+                self.by_pass_collide(np.multiply(v, dt), np.multiply(ov, dt), left, right, top, down))
+
+    def multi_collide(self, objects, dt=1, offset_left=0, offset_right=0, offset_top=0, offset_down=0):
+        w, h = 0, 0
+        if hasattr(self, "width"):
+            w = self.width
+        if hasattr(self, "height"):
+            h = self.height
+        elif hasattr(self, "radius"):
+            w, h = self.radius, self.radius
+
+        if hasattr(self, "velocity"):
+            v = self.velocity
+        elif hasattr(self, "direction") and hasattr(self, "speed"):
+            v = np.multiply(self.direction, self.speed)
+        else:
+            v = self.get_velocity(dt)
+
+        δ1 = np.multiply(v, dt)
+
+        self.pass_collisions.clear()
+        self.bound_collisions.clear()
+        
+        for obj in objects:
+            left, right, top, down = obj.get_collision_rect( 
+                offset_left + w, 
+                offset_right + w,
+                offset_top + h,
+                offset_down + h
+            )
+
+            if hasattr(obj, "velocity"):
+                ov = obj.velocity
+            elif hasattr(obj, "direction") and hasattr(obj, "speed"):
+                ov = np.multiply(obj.direction, obj.speed)
+            else:
+                ov = obj.get_velocity(dt)
+
+            δ2 = np.multiply(ov, dt)
+
+            if self.by_bound_collide(left, right, top, down):
+                dx, dy = np.subtract(obj.pos, self.pos)
+                self.bound_collisions[dx * dx + dy * dy] = obj
+
+            elif self.by_pass_collide(δ1, δ2, left, right, top, down):
+                displacements = np.subtract(self.intersections, self.pos)    
+                # directed = displacements * (v / np.abs(v))
+                distances = [dx * dx + dy * dy for dx, dy in displacements]
+                # if ahead: self.bypass_collisions[min(ahead)] = obj
+                self.pass_collisions[min(distances)] = obj
+
+        if self.bound_collisions:
+            collision_obj = self.bound_collisions[min(self.bound_collisions.keys())]
+            return collision_obj
+        
+        if self.pass_collisions:
+            collision_obj = self.pass_collisions[min(self.pass_collisions.keys())]
+            return collision_obj
+                
+        return None
 
 
 class Agent(Object):
     def __init__(self, **kwargs):
-        self.__dict__["_restricted_attrs"] = {}
-        self.env = None
-        
         super().__init__(**kwargs)
 
         # For tracking agents progress
@@ -102,38 +373,10 @@ class Agent(Object):
         self.update_tqn_every = None
         self.buffer_capcity = None
         self.record_capcity = None
-
-    @property
-    def norm_pos(self):
-        return [int(x / cx) for x, cx in zip(self.pos, self.env.CELL_SIZE)]
-
+    
     @property
     def input_state(self):
         return self.env.state_f(self.env, self)
-
-    def __setattr__(self, name, value):
-        if name in self._restricted_attrs:
-            if self._restricted_attrs.get(name) != None:
-                lower_limit, upper_limit = self._restricted_attrs[name]
-
-                if np.any(value < lower_limit) or np.any(value > upper_limit):
-                    self.breaklaw_punish()
-
-                if isinstance(value, (np.ndarray, list)):
-                    value = RestrictedListParam(np.clip(value, a_min=lower_limit, a_max=upper_limit), [lower_limit, upper_limit], agent=self)
-                else:
-                    value = np.clip(value, a_min=lower_limit, a_max=upper_limit)
-
-            if hasattr(self, "env") and self.env != None:
-                original_value = self.__getattribute__(name)
-                super().__setattr__(name, value)
-
-                if self.env.map[*self.norm_pos[::-1]] in self.env.BLOCKED_SPACE:
-                    ''' Failed to set the attribute '''
-                    super().__setattr__(name, original_value)
-                    self.breaklaw_punish()
-        else:
-            super().__setattr__(name, value)
 
     def grant(self, n_points):
         self.granted_points += n_points
@@ -156,12 +399,6 @@ class Agent(Object):
         self.breaklaw_penalty = breaklaw_penalty
         self.done = done_f
         self.fail = fail_f
-
-    def limit(self, attr_name, limits=None):
-        self._restricted_attrs[attr_name] = limits
-        attr = getattr(self, attr_name)
-        if isinstance(attr, (np.ndarray, list)):
-            super().__setattr__(attr_name, RestrictedListParam(attr, limits, agent=self))
 
     def take_action(self, ε=0.5, rng=np.random.default_rng()):
         # take random actions initially, then gradually build the policy based on the Q function
@@ -211,8 +448,8 @@ class Agent(Object):
         self.batch_size = batch_size
         self.buffer_capcity = buffer_capcity
         
-        self.update_tqn_every = 2 * self.env.norm_size if update_tqn_every == None else update_tqn_every
-        self.record_capcity = int(self.env.norm_size / 2) if record_capcity == None else record_capcity
+        self.update_tqn_every = -1 if update_tqn_every == None else update_tqn_every
+        self.record_capcity = -1 if record_capcity == None else record_capcity
         input_shape = (batch_size, *np.array(self.env.state_f(self.env, self)).shape)
 
         # compile the networks
@@ -228,7 +465,7 @@ class Agent(Object):
             self.tqn.compile(input_shape=input_shape)
             self.tqn.set(2)
             self.tqn.copy_from(self.dqn)
-                   
+
     def learn(self, gamma=1):
         # Temporal difference
         if len(self.reply_buffer) > self.batch_size:
@@ -247,12 +484,15 @@ class Agent(Object):
 
 
 class Environment:
-    def __init__(self, map, lazy_render={}, BLOCKED_SPACE=[], CELL_SIZE=None):
+    def __init__(self, map, require_live_map=True, lazy_code=None, lazy_render={}, blocked_space=[], cell_size=None):
         self.map = np.array(map)
+
+        if require_live_map: self.live_map = np.array(map)
+
         self.norm_width = len(map[0])
         self.norm_height = len(map)
         self.norm_size = self.norm_height * self.norm_width
-        self.CELL_SIZE =  CELL_SIZE
+        self.CELL_SIZE =  cell_size
 
         self.agents = []
         self.active_objects = []
@@ -267,22 +507,30 @@ class Environment:
 
         self.running = False
         self.require_renderer = False
-        self.progress_inspect = False
+        self.release_ε = False
 
         # functions
         self.state_f = None # to produce state reperesentation for the agent(s)
         self.reward_f = None # to distrubte punishment/reward
 
-        self.BLOCKED_SPACE = BLOCKED_SPACE
-        self.LAZY_CODE = list(lazy_render.keys())
+        self.BLOCKED_SPACE = blocked_space
+        self.LAZY_CODE = lazy_code if lazy_code != None else list(lazy_render.keys())
+        self.NONE_CODE = None
+
         for i, row in enumerate(map):
             for j, col in enumerate(row):
                 if col in self.LAZY_CODE:
-                    loc = [j * CELL_SIZE[0], i * CELL_SIZE[1]]
-                    lazy_obj = Object(pos=loc, width=CELL_SIZE[0], height=CELL_SIZE[1])
-                    lazy_obj.render_f = lazy_render[self.map[i, j]]
+                    loc = [j * cell_size[0], i * cell_size[1]]
+                    lazy_obj = Object(pos=loc, width=cell_size[0], height=cell_size[1])
+                    lazy_obj.env = self
+
+                    if lazy_render: lazy_obj.render_f = lazy_render[self.map[i, j]]
+
                     self.lazy_objects.append(lazy_obj)
                     self.lazy_loc.append(loc)
+
+                elif self.NONE_CODE == None:
+                    self.NONE_CODE = col
 
     def step(self, ε, dt):
         agents_step = []
@@ -291,13 +539,12 @@ class Environment:
             state = self.state_f(self, agent)
             action = agent.take_action(ε)
             agents_step.append((state, action))
-
+            
+            action(agent) # This will excute action only if it was succesful.
+        
         for obj in self.active_objects: obj.update_f(dt) # update all active objects
 
         for agent, (state, action) in zip(self.agents, agents_step):
-            # check if it make a successful action by checking if any of the agentic attributes changed
-            action(agent)
-
             next_state = self.state_f(self, agent)
             net_reward = agent.granted_points
 
@@ -309,19 +556,24 @@ class Environment:
             agent.reply_buffer.append(trans)
             agent.granted_points = 0
 
+    def active_objects_init(self):
+        for obj in self.active_objects: obj.init()
+        self.live_active_objects = self.active_objects.copy()
+
     def active_objects_reset(self):
         for obj in self.active_objects: obj.reset()
         self.live_active_objects = self.active_objects.copy()
 
     def reset(self):
-        for agent in self.agents: agent.reset()
+        for agent in self.agents: agent.init()
         self.live_agents = self.agents.copy()
 
-        self.active_objects_reset()
+        self.active_objects_init()
         self.live_lazy_objects = self.lazy_objects.copy()
 
-    def add_object(self, object):
-        self.active_objects.append(object)
+    def add_object(self, obj):
+        self.active_objects.append(obj)
+        obj.env = self
 
     def add_agent(self, agent):
         self.agents.append(agent)
@@ -334,6 +586,9 @@ class Environment:
         renderer.CELL_SIZE = renderer.cell_width, renderer.cell_height = self.CELL_SIZE
 
     def kill_lazy_object(self, obj):
+        if hasattr(self, "live_map"):
+            map_pos = (np.array(obj.pos) / np.array(self.CELL_SIZE)).astype(int)
+            self.live_map[*map_pos[::-1]] = self.NONE_CODE
         self.live_lazy_objects.remove(obj)
 
     def kill_object(self, obj):
@@ -342,34 +597,46 @@ class Environment:
     def kill_agent(self, agent):
         self.live_agents.remove(agent)
 
-    def run(self, episodes=1, gamma=1, ε_range=(1, 0.05), ε_clip_ratio=0.5, fps=60):
+    def run(self, episodes=1, gamma=1, ε_range=(1.0, 0.0), ε_clip_ratio=0.5, fps=60):
         self.running = True
         ε_start, ε_final = ε_range
-        initial_time = perf_counter()
+        initial_time = t_start = perf_counter()
 
-        self.renderer.init()
+        if self.require_renderer:
+            self.renderer.init()
+
         for episode in range(episodes):
-            ε =  max(ε_final, ε_start - (episode / (ε_clip_ratio * episodes)) * (ε_start - ε_final))
-
             # run a sequence of actions and update
             self.reset()
             while self.live_agents and self.running:
-                dt = self.renderer.render(fps, ε, gamma)
+                if self.release_ε:
+                    ε = ε_final
+                else:
+                    ε =  max(ε_final, ε_start - (episode / (ε_clip_ratio * episodes)) * (ε_start - ε_final))
 
+                if self.require_renderer: 
+                    dt = self.renderer.render(fps, ε, gamma)  
+                else:
+                    end_start = perf_counter()
+                    dt = end_start - t_start
+                    t_start = end_start
+                
                 self.step(ε, dt)
+
                 for agent in self.live_agents:
                     agent.learn(gamma)
-                    if agent.done(): self.kill_agent(agent)
-                    if agent.fail(): self.active_objects_reset()
+                    if agent.fail() or agent.done(): self.kill_agent(agent)
 
-                if episode > episodes - 3: self.renderer.progress_inspect = True
+                if episode == episodes - 5:
+                    if self.require_renderer: self.renderer.progress_inspect = True
+                    self.agents[self.renderer.agent_to_debug].dqn.save(f"BreakoutA{self.map.shape}{self.renderer.agent_to_debug}")
 
-                if not self.renderer.running:
-                    print(f"(!) The environment is stopped.         ({perf_counter() - initial_time :.2f}s)")
+                if not self.running or (self.require_renderer and not self.renderer.running):
                     self.renderer.quit()
+                    print(f"(!) The environment is stopped.         ({perf_counter() - initial_time :.2f}s)")
                     return
 
-            print("Episode #:", episode, "   Total Reward per Child:", [child.accu_reward for child in self.agents])
+            print("Episode #:", episode, "   Total Reward per Child:", [round(agent.accu_reward, 2) for agent in self.agents])
         print(f"(*) Simulation Finished.            ({perf_counter() - initial_time :.2f}s)")
 
 
@@ -383,54 +650,36 @@ class Renderer:
 
         # pygame components
         self.W, self.H = RES
-        self.screen = pygame.display.set_mode(RES)
-        self.clock = pygame.time.Clock()
+        self.screen = None
+        self.clock = None
 
         # fonts
         self.hyperparam_font = None
-        self.reward_font = []
+        self.reward_font = None
         self.font_aliases = []
 
         self.progress_inspect = False
         self.running = False
         self.agent_to_debug = 0
 
-    def pre_process(func):
-        def wrapper(instance, *args, **kwargs):
-            if instance.env.require_renderer:
-                return func(instance, *args, **kwargs)
-        return wrapper
-
-    @pre_process
     def init(self):
-        cell_size = self.cell_width * self.cell_height
-
         self.init_core()
 
-        self.hyperparam_font = pygame.font.SysFont(None, int(cell_size / 80) + 1)
+        self.screen = pygame.display.set_mode((self.W, self.H))
+        self.clock = pygame.time.Clock()
+
+        self.hyperparam_font = pygame.font.SysFont(None, int(self.H / 15) + 1)
+        self.reward_font = pygame.font.SysFont(None, int(self.H / 18) + 1)
         for agent in self.env.agents:
-            if hasattr(agent, "width") and hasattr(agent, "height"):
-                size = agent.width * agent.height / 35
-            elif hasattr(agent, "width"):
-                size = agent.width * 0.75
-            elif hasattr(agent, "height"):
-                size = agent.height * 0.75
-            elif hasattr(agent, "radius"):
-                size = agent.radius * 0.75
-            else:
-                size = cell_size / 50
+            self.font_aliases.append(pygame.font.SysFont(None, int(self.cell_height / (1.5 * len(agent.actions))) + 1))
 
-            self.reward_font.append(pygame.font.SysFont(None, int(size / 2) + 1))
-            self.font_aliases.append(pygame.font.SysFont(None, int(size / (2 * len(agent.actions))) + 1))
-
-    def configuer_debugger(self, figure, info_y, info_x, colors=[], labels=[]):
+    def configuer_debugger(self, figure, info_y=None, info_x=None, colors=[], labels=[]):
         self.figure = figure
         self.info_y = info_y
         self.info_x = info_x
         self.colors = colors
         self.labels = labels
 
-    @pre_process
     def debug(self, n_agent):
         agent = self.env.agents[n_agent]
         limits = agent._restricted_attrs.get("pos")
@@ -447,11 +696,18 @@ class Renderer:
 
             states = []
             pos = list(agent.pos)
+
+            if agent.pos.track_change:
+                delta = agent.pos.delta.copy()
+
             for p in coordinates:
                 agent.pos = p
                 states.append(self.env.state_f(self.env, agent))
 
             agent.pos = pos
+            if agent.pos.track_change:
+                agent.pos.delta = delta
+
             states = np.array(states)
             agent.dqn.resize_batch(states.shape[0])
 
@@ -459,15 +715,16 @@ class Renderer:
             agent.dqn.resize_batch(agent.batch_size)
 
             for q, p in zip(Qs, coordinates):
-                lines = [
-                    f"{l}: {sub_q :.2f}" for l, sub_q in zip(self.labels, q)
-                ]
+                if self.info_y != None and self.info_x != None:
+                    lines = [
+                        f"{l}: {sub_q :.2f}" for l, sub_q in zip(self.labels, q)
+                    ]
 
-                y = self.info_y(renderer=self, coordinate=p)
-                for line, color in zip(lines, self.colors):
-                    text_surface = self.font_aliases[n_agent].render(line, True, color)
-                    self.screen.blit(text_surface, (self.info_x(renderer=self, coordinate=p), y))
-                    y += self.font_aliases[n_agent].get_linesize()
+                    y = self.info_y(renderer=self, coordinate=p)
+                    for line, color in zip(lines, self.colors):
+                        text_surface = self.font_aliases[n_agent].render(line, True, color)
+                        self.screen.blit(text_surface, (self.info_x(renderer=self, coordinate=p), y))
+                        y += self.font_aliases[n_agent].get_linesize()
 
                 action_idx = np.argmax(q)
                 self.figure(renderer=self, action_idx=action_idx, coordinate=p)
@@ -479,20 +736,20 @@ class Renderer:
             Q = agent.Q(state).squeeze()
             agent.dqn.set(0)
 
-            lines = [
-                f"{l}: {sub_q :.2f}" for l, sub_q in zip(self.labels, Q)
-            ]
+            if self.show_info:
+                lines = [
+                    f"{l}: {sub_q :.2f}" for l, sub_q in zip(self.labels, Q)
+                ]
 
-            y = self.info_y(renderer=self, coordinate=agent.pos)
-            for line, color in zip(lines, self.colors):
-                text_surface = self.font_aliases.render(line, True, color)
-                self.screen.blit(text_surface, (self.info_x(renderer=self, coordinate=agent.pos), y))
-                y += self.font_aliases.get_linesize()
+                y = self.info_y(renderer=self, coordinate=agent.pos)
+                for line, color in zip(lines, self.colors):
+                    text_surface = self.font_aliases.render(line, True, color)
+                    self.screen.blit(text_surface, (self.info_x(renderer=self, coordinate=agent.pos), y))
+                    y += self.font_aliases.get_linesize()
 
             action_idx = np.argmax(Q)
             self.figure(renderer=self, action_idx=action_idx, coordinate=agent.pos)
 
-    @pre_process
     def render(self, fps, ε, gamma):
         self.running = True
         for event in pygame.event.get():
@@ -502,6 +759,11 @@ class Renderer:
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_SPACE:
                     self.progress_inspect = True
+                elif event.key == pygame.K_PAGEDOWN:
+                    self.env.release_ε = not self.env.release_ε
+                elif event.key == pygame.K_s:
+                    self.env.agents[self.agent_to_debug].dqn.save(f"BreakoutA{self.env.map.shape}{self.agent_to_debug}")
+                    self.env.agents[self.agent_to_debug].tqn.save(f"BreakoutT{self.env.map.shape}{self.agent_to_debug}")
                 else:
                     agent_to_debug = event.key - pygame.K_1
                     if agent_to_debug < len(self.env.agents):
@@ -521,7 +783,7 @@ class Renderer:
         if self.progress_inspect:
             self.debug(self.agent_to_debug)
         else:
-            for i, agent in enumerate(self.env.live_agents):
+            for agent in self.env.live_agents:
                 agent.render_f(self.screen)
 
                 # show the reward / penalty on the screen close to the agent
@@ -529,11 +791,11 @@ class Renderer:
                     reward = agent.reply_buffer[-1][2]
                     
                     if reward > 0:
-                        text_surface = self.reward_font[i].render(f"+{reward}", True, "green")
+                        text_surface = self.reward_font.render(f"+{reward}", True, "green")
                     elif reward == 0:
                         continue
                     else:
-                        text_surface = self.reward_font[i].render(f"{reward}", True, "red")
+                        text_surface = self.reward_font.render(f"{reward}", True, "red")
 
                     if hasattr(agent, "width"):
                         label_x = agent.pos[0] + agent.width - self.cell_width / 2
@@ -542,7 +804,10 @@ class Renderer:
                     else:
                         label_x = agent.pos[0]
 
-                    text_rect = text_surface.get_rect(center=(label_x, agent.pos[1] - self.cell_height / 2))
+                    if hasattr(agent, "radius"):
+                        text_rect = text_surface.get_rect(center=(label_x, agent.pos[1] - agent.radius - self.reward_font.get_height()))
+                    else:
+                        text_rect = text_surface.get_rect(center=(label_x, agent.pos[1] - self.reward_font.get_height()))
                     self.screen.blit(text_surface, text_rect)
 
         # info logging
@@ -571,7 +836,4 @@ class Renderer:
         dt = self.clock.tick(fps) / 1000.0  # limits FPS
         return dt
 
-    @pre_process
     def quit(self): self.quit_core()
-
-    del pre_process

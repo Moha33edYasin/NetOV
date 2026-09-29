@@ -1,37 +1,5 @@
-import pygame
 from markov import *
-
-W, H = 900, 600
-FPS = 60
-_ = 1
-
-blocked_code = [_]
-lazy_render = {
-    _ : lambda screen, obj: pygame.draw.rect(screen, "red", [*obj.pos, obj.width-1, obj.height-1]),
-}
-
-world_map = [
-    [0, _, _, _, _, _, _, _, _, _, _, _, _, 0],
-    [_, _, _, _, _, _, _, _, _, _, _, _, _, _],
-    [0, _, _, _, _, _, _, _, _, _, _, _, _, 0],
-    [0, _, _, _, _, _, _, _, _, _, _, _, _, 0],
-    [0, 0, 0, _, _, _, _, _, _, _, _, 0, 0, 0],
-    [0, 0, 0, 0, _, _, _, _, _, _, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-]
-
-rect_w = W / (len(world_map[0]))
-rect_h = H / (len(world_map))
-platform_height = 0.5 * rect_h
-platform_width = 2 * rect_w
-ball_collision = True
+from game_settings import *
 
 # ********** debugging *************
 def arrow_labels(renderer, action_idx, coordinate):
@@ -39,86 +7,110 @@ def arrow_labels(renderer, action_idx, coordinate):
         p1 = (coordinate[0] + renderer.cell_width / 2, renderer.H - renderer.cell_height / 2),
         p2 = (coordinate[0] + .9 * renderer.cell_width, renderer.H - renderer.cell_height / 2)
 
-    elif action_idx == 1:
+    if action_idx == 1:
+        p1 = (coordinate[0] + renderer.cell_width / 2, renderer.H - renderer.cell_height / 2),
+        p2 = (coordinate[0] + renderer.cell_width / 2, renderer.H - renderer.cell_height / 2)
+
+    elif action_idx == 2:
         p1 = (coordinate[0] + renderer.cell_width / 2, renderer.H - renderer.cell_height / 2),
         p2 = (coordinate[0] + .1 * renderer.cell_width, renderer.H - renderer.cell_height / 2)
 
     pygame.draw.line(renderer.screen, renderer.colors[action_idx], p1, p2, int(renderer.cell_width / 25))
     pygame.draw.circle(renderer.screen, renderer.colors[action_idx], p2, renderer.cell_width / 15)
 
-def label_y(renderer, coordinate):
-    return renderer.H - renderer.CELL_SIZE[1] + renderer.CELL_SIZE[1] / 8
-
-def label_x(renderer, coordinate):
-    return coordinate[0] + renderer.CELL_SIZE[0] / 8
-
 # ********* state system **********
 def capture_state(env, agent):
-    blocks_loc = np.array([obj.pos if obj in env.live_lazy_objects else [0.0, 0.0] for obj in env.lazy_objects])
-    n_arr = 1 / np.max(env.lazy_loc, axis=0)
-
     return np.concatenate(
         [
-            [agent.pos[0] / (W - agent.width)],
-            np.multiply(ball.pos, [1 / (W - ball.radius), 1 / (H - ball.radius * 0.5)]),
-            ball.direction,
-            np.multiply(blocks_loc, n_arr).ravel()
+            [agent.pos[0] / (W - agent.width), agent.width / PEDDEL_W],
+            np.multiply(ball.pos, [1 / (W - ball.radius), 1 / H]),
+            np.multiply(ball.direction, ball.speed / FAST_SPEED3),
+            env.live_map.ravel() / env.map.max()
         ]
     )
 
 # ******** ball **********
 def ball_update(dt):
-    if dt >= 0.1: dt = 0.001
+    if dt >= 0.1: dt = 0.01
+
+    if ball.n_peddel_hits == 4:
+        ball.speed = max(FAST_SPEED1, ball.speed)
+
+    if ball.n_peddel_hits == 12:
+        ball.speed = max(FAST_SPEED2, ball.speed)
 
     prev_pos = ball.pos.copy()
     ball.pos[0] += ball.direction[0] * ball.speed * dt
     ball.pos[1] += ball.direction[1] * ball.speed * dt
 
     # check bounds crossing
-    if ball.pos[0] <= 0:
-        ball.pos[0] = 0
-        ball.direction[0] *= -1 
-    if ball.pos[0] >= W - ball.radius:
+    if ball.pos[0] <= ball.radius:
+        ball.pos[0] = ball.radius
+        ball.direction[0] *= -1
+
+    elif ball.pos[0] >= W - ball.radius:
         ball.pos[0] = W - ball.radius
         ball.direction[0] *= -1
-    if ball.pos[1] <= 0 :
-        ball.pos[1] = 0
-        ball.direction[1] *= -1 
-        
-    if ball.collide(agent, offset_down=-agent.height / 2, offset_right=ball.radius, offset_left=ball.radius):
-        agent.grant(1)
+
+    if ball.pos[1] <= ball.radius :
+        ball.pos[1] = ball.radius
         ball.direction[1] *= -1
-        ball.pos[1] = agent.pos[1] - ball.radius
+        agent.width = PEDDEL_W / 2
+        agent.track("pos", ([0, H - CELL_H], 
+                    [W - PEDDEL_W / 2, H - CELL_H]))
+
+    if ball.collide(agent, dt=dt, offset_down=-ball.radius):
+        ball.n_peddel_hits += 1
+        agent.grant(0.5)
+
+        distance_x = ball.pos[0] - agent.pos[0] - agent.width / 2
+
+        # Hitting a segment close to edges will raise the ball at a wider angle
+        # This should decrease the determinism in the game.
+        x_sign = 1 if ball.direction[0] > 0 else -1
+        if 0 <= abs(distance_x) < agent.width / 8:
+            ball.direction[0] = x_sign * 1 / np.sqrt(2) * 0.35
+        elif agent.width / 8 <= abs(distance_x) < agent.width / 4:
+            ball.direction[0] = x_sign * 1 / np.sqrt(2) * 0.65
+        elif agent.width / 4 <= abs(distance_x) < 3/8 * agent.width:
+            ball.direction[0] = x_sign * 1 / np.sqrt(2) * 0.95
+        else:
+            ball.direction[0] = x_sign * 1 / np.sqrt(2) * 1.25
+
+        ball.direction[1] = -np.sqrt(1 - ball.direction[0] * ball.direction[0])
+
+        ball.pos[1] = agent.pos[1] - ball.radius - 1
         return
 
-    sequared_distances = {}
-    for obj in env.live_lazy_objects:
-        if ball.collide(obj):
-            dx = prev_pos[0] - obj.pos[0] - obj.width / 2
-            dy = prev_pos[1] - obj.pos[1] - obj.height / 2
-            seq_dist = dx * dx + dy * dy
-            sequared_distances[seq_dist] = obj
+    target_brick = ball.multi_collide(env.live_lazy_objects, dt=dt) #sequared_distances[min(sequared_distances.keys())]
+    if target_brick != None:
+        agent.grant(8 - (target_brick.norm_pos[1] - int(NUM_ROW / 6)))
 
-    if sequared_distances:
-        agent.grant(2)
-        collision_obj = sequared_distances[min(sequared_distances.keys())]
+        # change speed and peddel width if the ball hit the first two rows on the top
+        norm_y = target_brick.pos[1] / CELL_H
+        if norm_y <= int(NUM_ROW / 6) + 1:
+            ball.speed = max(FAST_SPEED3, ball.speed)
 
-        dx = prev_pos[0] - collision_obj.pos[0] - collision_obj.width / 2
-        dy = prev_pos[1] - collision_obj.pos[1] - collision_obj.height / 2
-        if abs(dx) >= obj.width / 2:
-            ball.direction[0] *= -1
-            if dx > 0:
-                ball.pos[0] = collision_obj.pos[0] + collision_obj.width + ball.radius + 1
+        dx = prev_pos[0] - target_brick.pos[0] - target_brick.width / 2
+        dy = prev_pos[1] - target_brick.pos[1] - target_brick.height / 2
+
+        if abs(dy) > target_brick.height / 2:
+            if ball.direction[1] < 0:
+                ball.direction[1] = abs(ball.direction[1])
+                ball.pos[1] = target_brick.pos[1] + target_brick.height + ball.radius + 1
             else:
-                ball.pos[0] = collision_obj.pos[0] - ball.radius - 1
-        if abs(dy) >= obj.height / 2:
-            ball.direction[1] *= -1
-            if dy > 0:
-                ball.pos[1] = collision_obj.pos[1] + collision_obj.height + ball.radius + 1
-            else:
-                ball.pos[1] = collision_obj.pos[1] - ball.radius - 1
+                ball.direction[1] = -abs(ball.direction[1])
+                ball.pos[1] = target_brick.pos[1] - ball.radius - 1
 
-        env.kill_lazy_object(collision_obj)
+        elif abs(dx) > target_brick.width / 2:
+            if ball.direction[0] < 0:
+                ball.direction[0] = abs(ball.direction[1])
+                ball.pos[0] = target_brick.pos[0] + target_brick.width + ball.radius + 1
+            else:
+                ball.direction[0] = -abs(ball.direction[1])
+                ball.pos[0] = target_brick.pos[0] - ball.radius - 1
+        
+        env.kill_lazy_object(target_brick)
 
 def ball_render(screen):
     pygame.draw.circle(screen, "green", ball.pos, ball.radius)
@@ -127,70 +119,101 @@ def random_direction(rng = np.random.default_rng()):
     dirx = rng.uniform(-1 / np.sqrt(2), 1 / np.sqrt(2))
     return [dirx, np.sqrt(1 - dirx * dirx)]
 
-# ******** agent **********
+# ******** peddel **********
 def peddel_right(agent):
-    agent.pos[0] += rect_w
+    agent.pos[0] += CELL_W
+
+def peddel_idle(agent): ...
 
 def peddel_left(agent):
-    agent.pos[0] -= rect_w
+    agent.pos[0] -= CELL_W
 
 def peddel_render(screen):
+    # colors = ["black", "orange", "red", "purple", "gray"]
+    # icolors = ["deeppink", "lightsalmon1", "seagreen1", "wheat3"]
     pygame.draw.rect(screen, "blue", [*agent.pos, agent.width, agent.height])
 
+    # if hasattr(agent, "points"):
+    #     pygame.draw.circle(screen, icolors[1], agent.points[0], 3)
+    #     pygame.draw.circle(screen, icolors[1], agent.points[1], 3)
+    #     pygame.draw.line(screen, icolors[1], agent.points[0], agent.points[1])
+
+    # if hasattr(ball, "points"):
+    #     for i, p in enumerate(ball.points): pygame.draw.circle(screen, colors[int(i / 2)], p, 3)
+    #     for i in range(0, len(ball.points), 2): pygame.draw.line(screen, colors[int(i / 2)], ball.points[i], ball.points[i + 1])
+
+    #     if hasattr(ball, "CC1"):
+    #         for p in ball.CC1:
+    #             pygame.draw.rect(screen, "gray", [*p, CELL_W, CELL_H])
+    #     if hasattr(ball, "CC"):
+    #         for p in ball.CC:
+    #             pygame.draw.rect(screen, "pink", [*p, CELL_W, CELL_H])
+        
+    #     if hasattr(ball, "P1"):
+    #         pygame.draw.rect(screen, "seagreen1", [*ball.P1, CELL_W, CELL_H])
+        
+    #     if hasattr(ball, "A"):
+    #         pygame.draw.circle(screen, "purple", ball.A, 3)
+        
+    #     for i, p in enumerate(ball.intersections): pygame.draw.circle(screen, icolors[i], p, 2)
 
 # agent setup
 ball = Object(
     pos=[W / 2, H / 2],
-    radius=rect_w / 5,
-    speed=FPS * rect_w * 0.35,
+    radius=BALL_RADIUS,
+    speed=NORMAL_SPEED,
     direction=random_direction,
+    n_peddel_hits=0
 )
 
 agent = Agent(
-    pos=[len(world_map[0]) * rect_w / 2, H - rect_h],
-    width=platform_width, 
-    height=platform_height
+    pos=[NUM_COL * CELL_W / 2, H - CELL_H],
+    width=PEDDEL_W,
+    height=PEDDEL_H
 )
 
 env = Environment(
-    world_map,
-    lazy_render=lazy_render,
-    BLOCKED_SPACE=blocked_code,
-    CELL_SIZE=[rect_w, rect_h]
+    WORLD_MAP,
+    require_live_map=True,
+    lazy_code=BLOCED_CODE,
+    lazy_render=LAZY_RENDERS,
+    blocked_space=BLOCED_CODE,
+    cell_size=[CELL_W, CELL_H]
 )
 
 renderer = Renderer(
     RES=(W, H),
-    init=pygame.init, 
-    quit=pygame.quit
+    init=pygame.init,
+    quit=pygame.quit,
 )
 
 ball.update_f = ball_update
 ball.render_f  = ball_render
 agent.render_f = peddel_render
 
-agent.limit("pos", ([0, H - rect_h], 
-                    [W - platform_width, H - rect_h]))
+agent.track("pos", ([0, H - CELL_H], 
+                    [W - PEDDEL_W, H - CELL_H]))
 
 agent.set_nn(
     nn(
         Flatten(),
         Dense(64, Leaky_ReLU()),
         Dense(64, Leaky_ReLU()),
-        Dense(2)
+        Dense(3)
     )
 )
 
 agent.define_actions(
     peddel_right,
+    peddel_idle,
     peddel_left,
-    breaklaw_penalty=-1,
+    breaklaw_penalty=-0.1,
     done_f=lambda : len(env.live_lazy_objects) == 0,
-    fail_f=lambda : ball.pos[1] > renderer.H - ball.radius * 0.5
+    fail_f=lambda : ball.pos[1] > H
 )
 
 env.state_f = capture_state
-env.reward_f = lambda env, agent: -2 if agent.fail() else 0
+env.reward_f = lambda env, agent: -5 if agent.fail() else (10 if agent.done() else 0)
 
 env.add_object(ball)
 env.add_agent(agent)
@@ -198,26 +221,22 @@ env.add_renderer(renderer)
 
 renderer.configuer_debugger(
     figure=arrow_labels,
-    info_y=label_y,
-    info_x=label_x,
-    colors= ["orange", "purple"],
-    labels=["R", "L"]
+    colors= ["orange", "black", "purple"]
 )
 
 agent.compile(
-    batch_size=32,
+    batch_size=64,
     optim=Adam(lr=5e-4),
     cost=MSE, # J(θ) for π(s)
     dcost=None, # ∇ J(θ) for π(s)
-    update_tqn_every=200,
-    buffer_capcity=10_000,
-    record_capcity=20
+    update_tqn_every=2000,
+    buffer_capcity=10_000
 )
 
 env.run(
-    episodes=250,
+    episodes=60_000, # Experiement 1: (60_000)
     gamma=0.99,
-    ε_range=(0.9, 0.05),
-    ε_clip_ratio=0.7,
+    ε_range=(1, 0.05),
+    ε_clip_ratio=0.85, # Experiement 1: (0.85)
     fps=FPS
 )

@@ -62,7 +62,7 @@ def label_x(renderer, coordinate):
 def render_player(screen):
     if agent.record:
         for state, _, _, state_after, _ in agent.record[:-1]:
-            pygame.draw.line(screen, 'red', (
+            pygame.draw.line(screen, 'seagreen', (
                 state[0] * cell_w + cell_w / 2, 
                 state[1] * cell_h + cell_h / 2
                 ), (
@@ -70,7 +70,7 @@ def render_player(screen):
                     state_after[1] * cell_h + cell_h / 2
                     ), 3)
 
-    pygame.draw.circle(screen, 'red', agent.pos, cell_w / 6, 0)
+    pygame.draw.circle(screen, 'seagreen', agent.pos, agent.radius, 0)
 
 def right(agent): agent.pos[0] += cell_w
 def left(agent): agent.pos[0] -= cell_w
@@ -80,17 +80,20 @@ def down(agent): agent.pos[1] += cell_h
 # agent setup
 goal = (W - cell_w / 2, H - cell_h / 2)
 
-agent = Agent(pos=[cell_w / 2, cell_h / 2])
+agent = Agent(
+    pos=[cell_w / 2, cell_h / 2],
+    radius=cell_w / 6
+)
 
 env = Environment(
     world_map, 
     lazy_render=lazy_render,
-    BLOCKED_SPACE=blocked_code, 
-    CELL_SIZE=[cell_w, cell_h]
+    blocked_space=blocked_code, 
+    cell_size=[cell_w, cell_h]
 )
 
 agent.render_f = render_player
-agent.limit("pos", ([cell_w / 2, cell_h / 2], [W - cell_w / 2, H - cell_h / 2]))
+agent.track("pos", ([cell_w / 2, cell_h / 2], [W - cell_w / 2, H - cell_h / 2]))
 
 agent.set_nn(
     nn(
