@@ -311,9 +311,9 @@ The agent currently has three actions (right, no action, or left):
 
 ```python
 agent.define_actions(
-    peddel_right,
-    peddel_idle, # void function
-    peddel_left,
+    paddel_right,
+    paddel_idle, # void function
+    paddel_left,
     breaklaw_penalty=-1,
     done_f=lambda : len(env.live_lazy_objects) == 0,
     fail_f=lambda : ball.pos[1] > renderer.H - ball.radius * 0.5
