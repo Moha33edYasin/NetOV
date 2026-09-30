@@ -1,5 +1,5 @@
 from markov import *
-from game_settings import *
+from breakout_settings import *
 
 # ********** debugging *************
 def arrow_labels(renderer, action_idx, coordinate):
@@ -22,7 +22,7 @@ def arrow_labels(renderer, action_idx, coordinate):
 def capture_state(env, agent):
     return np.concatenate(
         [
-            [agent.pos[0] / (W - agent.width), agent.width / PEDDEL_W],
+            [agent.pos[0] / (W - agent.width), agent.width / PADDEL_W],
             np.multiply(ball.pos, [1 / (W - ball.radius), 1 / H]),
             np.multiply(ball.direction, ball.speed / FAST_SPEED3),
             env.live_map.ravel() / env.map.max()
@@ -33,10 +33,10 @@ def capture_state(env, agent):
 def ball_update(dt):
     if dt >= 0.1: dt = 0.01
 
-    if ball.n_peddel_hits == 4:
+    if ball.n_paddel_hits == 4:
         ball.speed = max(FAST_SPEED1, ball.speed)
 
-    if ball.n_peddel_hits == 12:
+    if ball.n_paddel_hits == 12:
         ball.speed = max(FAST_SPEED2, ball.speed)
 
     prev_pos = ball.pos.copy()
@@ -55,12 +55,12 @@ def ball_update(dt):
     if ball.pos[1] <= ball.radius :
         ball.pos[1] = ball.radius
         ball.direction[1] *= -1
-        agent.width = PEDDEL_W / 2
+        agent.width = PADDEL_W / 2
         agent.track("pos", ([0, H - CELL_H], 
-                    [W - PEDDEL_W / 2, H - CELL_H]))
+                    [W - PADDEL_W / 2, H - CELL_H]))
 
     if ball.collide(agent, dt=dt, offset_down=-ball.radius):
-        ball.n_peddel_hits += 1
+        ball.n_paddel_hits += 1
         agent.grant(0.5)
 
         distance_x = ball.pos[0] - agent.pos[0] - agent.width / 2
@@ -86,7 +86,7 @@ def ball_update(dt):
     if target_brick != None:
         agent.grant(8 - (target_brick.norm_pos[1] - int(NUM_ROW / 6)))
 
-        # change speed and peddel width if the ball hit the first two rows on the top
+        # change speed and paddel width if the ball hit the first two rows on the top
         norm_y = target_brick.pos[1] / CELL_H
         if norm_y <= int(NUM_ROW / 6) + 1:
             ball.speed = max(FAST_SPEED3, ball.speed)
@@ -119,16 +119,16 @@ def random_direction(rng = np.random.default_rng()):
     dirx = rng.uniform(-1 / np.sqrt(2), 1 / np.sqrt(2))
     return [dirx, np.sqrt(1 - dirx * dirx)]
 
-# ******** peddel **********
-def peddel_right(agent):
+# ******** paddel **********
+def paddel_right(agent):
     agent.pos[0] += CELL_W
 
-def peddel_idle(agent): ...
+def paddel_idle(agent): ...
 
-def peddel_left(agent):
+def paddel_left(agent):
     agent.pos[0] -= CELL_W
 
-def peddel_render(screen):
+def paddel_render(screen):
     # colors = ["black", "orange", "red", "purple", "gray"]
     # icolors = ["deeppink", "lightsalmon1", "seagreen1", "wheat3"]
     pygame.draw.rect(screen, "blue", [*agent.pos, agent.width, agent.height])
@@ -163,13 +163,13 @@ ball = Object(
     radius=BALL_RADIUS,
     speed=NORMAL_SPEED,
     direction=random_direction,
-    n_peddel_hits=0
+    n_paddel_hits=0
 )
 
 agent = Agent(
     pos=[NUM_COL * CELL_W / 2, H - CELL_H],
-    width=PEDDEL_W,
-    height=PEDDEL_H
+    width=PADDEL_W,
+    height=PADDEL_H
 )
 
 env = Environment(
@@ -189,10 +189,10 @@ renderer = Renderer(
 
 ball.update_f = ball_update
 ball.render_f  = ball_render
-agent.render_f = peddel_render
+agent.render_f = paddel_render
 
 agent.track("pos", ([0, H - CELL_H], 
-                    [W - PEDDEL_W, H - CELL_H]))
+                    [W - PADDEL_W, H - CELL_H]))
 
 agent.set_nn(
     nn(
@@ -204,9 +204,9 @@ agent.set_nn(
 )
 
 agent.define_actions(
-    peddel_right,
-    peddel_idle,
-    peddel_left,
+    paddel_right,
+    paddel_idle,
+    paddel_left,
     breaklaw_penalty=-0.1,
     done_f=lambda : len(env.live_lazy_objects) == 0,
     fail_f=lambda : ball.pos[1] > H
