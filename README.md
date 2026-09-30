@@ -382,7 +382,7 @@ You can check if two object collided by calling `obj1.collide(obj2)` which will 
 
 There are two types of collision that I built `collide` to detect:  
 1. **By-bound:** Happen when `obj1` touches or enter the collision box area of `obj2`.  
-2. **Bypass:** Happen when `obj1` pass through or jump over `obj2`. In a discerte motion (what every computer does), this extremely important.  
+2. **Bypass:** Happen when `obj1` pass through or jump over `obj2`. In a discerte motion (what every computer does), this is extremely important.  
 
 You can also use `obj1.multi_collide(objects)` with multiple objects. You pass `dt` and the collision box offsets the same way as `collide`.  
 
