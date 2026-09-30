@@ -71,7 +71,7 @@ def down(agent): agent.pos[1] += cell_h
 ```
 
 ### How reward works?
-The agent gets always `-1` until it hit the goal (the red square), where no reward will be given. 
+The environment `env` always give a penalty of `-1` to the agent until it hit the goal (the red square), where no reward will be given. 
 
 ```python
 env.reward_f = lambda env, agent : 0 if agent.done() else -1
@@ -110,11 +110,10 @@ FPS = 60
 ```
 Then, we have to specify the blocks.  
 We use postive integars as unique codes that will help us build faster, and it will be a blocked space, meaning the agent cannot move to.  
-
 ```python
 BLOCED_CODE = [1, 2, 3, 4, 5, 6]
 ```
-[!NOTE]
+> [!NOTE]
 > In our breakout experiment here, this is meaningless, but I just want to make it clear that the peddel (the agent) won't move to the bricks.
 
 To render these static objects (which we will refer to as **lazy objects**), we make a dictonary that contain all unique codes and map them to a custom render function.  
@@ -139,7 +138,7 @@ Next, we make a simple grid (`40x20` with `6` rows of brick) to low represent th
 world_map = create_board(40, 20, 6)
 ```
 
-> [!Note]
+> [!NOTE]
 > * You can check the implementation of `create_board` in the `breakout_setting.py`, but it should be straightforward.
 > * You can experiment with any layout you want. This is only an example.
 
@@ -261,7 +260,7 @@ agent.track("pos", ([0, H - CELL_H],
 print("Agent velocity:", agent.pos.delta / dt)
 ```
 
-[!IMPORTANT]
+> [!IMPORTANT]
 > Using automatic change track with `change_track=True` will affect how the collision mechanics work. As the older property value is used to calculate the change, it is highly not recommended to set `change_track=True` if the object have a random or frequently changing motion.
 
 ## Core Concepts
@@ -283,7 +282,7 @@ def capture_state(env, agent):
         ]
     )
 ```
-We inform the environement with our definition, simply by writing:  
+We inform the environement `env` with our definition, simply by writing:  
 
 ```python
 env.state_f = capture_state
@@ -423,7 +422,7 @@ Objects and agents can define their own rendering functions:
 ball.render_f = ball_render
 agent.renderer_f = peddel_render
 ```
-[!NOTE]
+> [!NOTE]
 > * The current prototype also includes a debugging overlay that visualizes the agent's available actions in all possible states based on their `Q` return, if there is a restriction via `track` on the agent's position subject to debugging. Otherwise, it visualizes the Q of the available actions in the current state.  
 > * The net reward will be shown near each agent.  
 > * The hyperparamter (ε and gamma) will be shown in the top-left corner of the screen.  
