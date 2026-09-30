@@ -93,6 +93,11 @@ agent.define_actions(
 ```
 `done_f` and `fail_f` arguments determine when the agent solved the problem or entirely failed and should restart.
 
+## The Result
+  
+<img width="898" height="600" alt="maze solver" src="https://github.com/user-attachments/assets/29bf1631-cde8-4a22-bf32-1c48101eb29a" />
+  
+  
 ## Experiment B: Playing Breakout
 
 ### Problem Statement
@@ -109,14 +114,14 @@ W, H = 900, 600
 FPS = 60
 ```
 Then, we have to specify the blocks.  
-We use postive integars as unique codes that will help us build faster, and it will be a blocked space, meaning the agent cannot move to.  
+We use positive integers as unique codes to help us build the board faster. These codes represent blocked spaces, meaning the agent cannot move into them. 
 ```python
 BLOCED_CODE = [1, 2, 3, 4, 5, 6]
 ```
 > [!NOTE]
-> In our breakout experiment here, this is meaningless, but I just want to make it clear that the peddel (the agent) won't move to the bricks.
+> In this Breakout experiment, this is not particularly meaningful, but it makes it clear that the paddle (the agent) cannot move onto the bricks.
 
-To render these static objects (which we will refer to as **lazy objects**), we make a dictonary that contain all unique codes and map them to a custom render function.  
+To render these static objects (which we will refer to as lazy objects), we create a dictionary that contains all unique codes and maps them to a custom rendering function.
 
 ```python
 LAZY_RENDERS = {
@@ -140,26 +145,26 @@ world_map = create_board(40, 20, 6)
 
 > [!NOTE]
 > * You can check the implementation of `create_board` in the `breakout_setting.py`, but it should be straightforward.
-> * You can experiment with any layout you want. This is only an example.
+> * You can experiment with any layout you want; this is only an example.
 
-Then, we calculate cell width `CELL_W` and height `CELL_H` as well as the peddel width `PEDDEL_W` and height `PEDDEL_H`.
+Then, we calculate cell width `CELL_W` and height `CELL_H` as well as the paddel width `PADDEL_W` and height `PADDEL_H`.
 
 ```python
 CELL_W = W / 40
 CELL_H = H / 20
 
-PEDDEL_H = 0.6 * CELL_H
-PEDDEL_W = 2 * CELL_W
+PADDEL_H = 0.6 * CELL_H
+PADDEL_W = 2 * CELL_W
 ```
 
-**The goal** is to **hit all the blocks** with the ball by moving the peddel so the ball bounce off toward them.   
+**The goal** is to **hit all the blocks** with the ball by moving the paddle so that the ball bounces toward them 
 
 
 ## Core Elements
 
 ### Environment
 
-`Environment` manages the simulation itself.
+`Environment` manages the simulation.
 
 It is responsible for things such as:
 
@@ -168,7 +173,7 @@ It is responsible for things such as:
 * Lazy environment objects (static ones, like the blocks)
 * Agents management.
 * Rendering (if renderer is provided. NetOV has built-in `Renderer` class that uses Pygame)
-* Credit Assignment
+* Credit assignment
 * Episode execution
 
 To define environment, you pass the map, lazy rendering dictonary, blocked space, and cell size:  
@@ -207,20 +212,28 @@ env.run(
 ```
 
 ### Object
-We define our ball. (note: you can put any attribute you need to store when initializing `Object` or `Agent`, you think of it as another way to construct your python class)
+We define our ball. (Note: you can add any attributes you need to store when initializing an `Object` or `Agent`; you can think of this as another way to construct a Python class.)
 
 ```python
 ball = Object(
     pos=[W / 2, H / 2],
     radius=BALL_RADIUS, # this will be used to align the label when rendering
     speed=NORMAL_SPEED, # the first ball speed for the breakout
-    direction=random_direction,
+    direction=random_direction, # random_direction is external function that return random unit vector pointing downward and incline by angle between [-π/4, -3π/4] 
     n_peddel_hits=0
 )
 ```
 
 Its movement is updated independently of the agent.
 
+> [!Note]  
+> * Every object should have at least a `pos` argument.  
+> * Any property initialized by a function (like `random_direction` above) will call that function everytime the object is resetted.  
+> * You can prevent resetting a property by calling `keep` on the object and passing the property's name. If you wish to reset a kept property later, you have to call `init` instead of `reset` on the object. `init` will reset all property regardless of their specifications.   
+> * `width`, `height`, and/or `radius` are required for proper collision mechanics and labels rendering.  
+> * `velocity` / `speed` with `direction` are recommend. That will help in collision mechanics.  
+> * Alternatively, you can use automatic tracking for the position property (using `track` function), and the velocity needed for collision calculations will be calculated automatically. (It is important not to use automatic position tracking if the motion changes repeatedly. Setting `speed` with `direction` or just setting `velocity` is safer).    
+   
 ---
 
 ### Agent
@@ -282,7 +295,7 @@ def capture_state(env, agent):
         ]
     )
 ```
-We inform the environement `env` with our definition, simply by writing:  
+We provide the environment `env` with our state definition by writing:
 
 ```python
 env.state_f = capture_state
@@ -323,7 +336,7 @@ agent.set_nn(
 )
 ```
 
-The final layer produces two values, corresponding to the two possible actions.
+The final layer produces three values, corresponding to the three possible actions (`paddle_left`, `paddel_idle`, `paddel_right`).
 
 Compiling the network for our current breakout experiment:
 
@@ -343,7 +356,7 @@ This experiment uses experience replay, a target-network update mechanism, and a
 ---
 
 ## Reward System
-The agent will get `-5` if it `fail` (aka. the ball fall off); `-0.1` for trying cross screen boundaries, `+0.5` if the ball bounce of the peddel, `+2` if the ball hit with a brick in the 6th level and it is increase by `+1` for hitting a higher level, `+10` if all bricks are successfuly cleared.
+The agent receives `-5` if it fail (i.e., the ball falls off); `-0.1` for trying to cross the screen boundaries; `+0.5` if the ball bounces off the paddle; `+2` if the ball hits a brick in the 6th level, with an additional `+1` for hitting a higher level; and `+10` if all bricks are successfully cleared.
 
 The general reward function is discourage failing:  
 
@@ -351,7 +364,7 @@ The general reward function is discourage failing:
 env.reward_f = lambda env, agent: -5 if agent.fail() else (10 if agent.done() else 0)
 ```
 while `breaklaw_penalty` in `agent.define_actions` is set to `-0.1`.  
-And finally, when we update the ball, we grant reward to desirable hits:  
+And finally, when we update the ball, we grant rewards for desirable hits:  
 
 ```python
 def ball_update(dt):
@@ -378,21 +391,35 @@ ball.update_f = ball_update
 ---
 
 ## Collision
-You can check if two object collided by calling `obj1.collide(obj2)` which will return `True` if there is a collision and `False` if not. You can pass `dt` if the enviroment is changing with respect to the time and You can adjust the collision box by passing any of `offset_left`, `offset_right`, `offset_top`, and/or `offset_down`.  
+You can check if two objects collided by calling `obj1.collide(obj2)` which returns `True` if there is a collision and `False` otherwise. You can pass `dt` if the enviroment is changing with respect to the time and You can adjust the collision box by passing any of `offset_left`, `offset_right`, `offset_top`, and/or `offset_down`.  
 
-There are two types of collision that I built `collide` to detect:  
-1. **By-bound:** Happen when `obj1` touches or enter the collision box area of `obj2`.  
-2. **Bypass:** Happen when `obj1` pass through or jump over `obj2`. In a discerte motion (what every computer does), this is extremely important.  
+There are two types of collisions that I built `collide` to detect:  
 
-You can also use `obj1.multi_collide(objects)` with multiple objects. You pass `dt` and the collision box offsets the same way as `collide`.  
+1. **By-bound**: Happen when `obj1` touches or enter the collision box area of `obj2`.  
+
+2. **Bypass**: Happen when `obj1` pass through or jump over `obj2`. It uses the intersections between the path of `obj1` and the diagonals of two inscribed quadrilaterals made by the movement of the `obj2`.  In discrete motion (as used by computers), this is extremely important.  
+
+You can also use `obj1.multi_collide(objects)` with multiple objects. You can pass `dt` and the collision-box offsets in the same way as with collide.  
 
 In our breakout expriement, collision handling determines whether the ball:
 
-* Hits the paddle -> Changes direction
-* Hits a brick -> Changes direction -> Removes a brick from the environment
+* Hits the paddle → Changes direction
+* Hits a brick → Changes direction → Removes a brick from the environment
 
-
-Bricks are removed after successful collision:
+### A visual illustration of how collision works
+  
+<img width="796" height="598" alt="Collision Detection 2" src="https://github.com/user-attachments/assets/3702cda2-1a98-40e7-8196-069a6c353ab8" />  
+  
+Here, bricks colored in pink indicate detected collisions with the ball, while the green brick is where the actual hit occurs (the nearest collision).  
+  
+  
+Here is how **Bypass** collision works in isolation: (You can see that I've just increased the ball's velocity)  
+  
+<img width="798" height="598" alt="Collision Detection" src="https://github.com/user-attachments/assets/cdc94f34-8ec0-4a71-8627-bbd54f271571" />  
+  
+You may notice in our breakout example normal rectangular diagonals are used. This is because we neither define `velocity` / `speed` and `direction` nor we use automatic change tracking (using `track`). Therefore, `multi_collide`/`collide` won't detect the paddle's movement. Instead, it will see isolated positions (snapshots) of the paddle and use the diagonals of the paddle.
+  
+Bricks are removed after successful collision by this line:
 
 ```python
 env.kill_lazy_object(obj)
@@ -453,11 +480,11 @@ The current goal is **not** to present a finished RL library, but to build and e
 
 ## Dependencies
 
-The current prototype uses:
+The current prototype uses:  
 
 * Python
 * NumPy
 * Pygame
 * NetJet
 
-**NetOV** itself provides the environment and reinforcement-learning abstractions, while **NetJet** provides the background neural-network functionality.
+**NetOV** itself provides the environment and reinforcement-learning abstractions, while **NetJet** provides the background neural-network functionality.  
