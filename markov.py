@@ -36,7 +36,7 @@ class RestrictedListParam(list):
         if self.track_change:
             self.delta[key] = super().__getitem__(key) - original_value
 
-class Buffer():
+class Buffer:
     def __init__(self, capacity, state_shape, float_dtype=np.float32, int_dtype=np.int16):
         self.capacity = capacity
 
@@ -429,6 +429,13 @@ class Agent(Object):
     def breaklaw_punish(self):
         self.granted_points += self.breaklaw_penalty
 
+    def init(self):
+        super().init()
+        
+        self.record.clear()
+        self.granted_points = 0
+        self.accu_reward = 0
+
     def reset(self):
         super().reset()
         self.granted_points = 0
@@ -491,9 +498,11 @@ class Agent(Object):
         self.batch_size = batch_size
         self.update_tqn_every = -1 if update_tqn_every == None else update_tqn_every
         self.record_capcity = -1 if record_capcity == None else record_capcity
-        
-        input_shape = (batch_size, *np.array(self.env.state_f(self.env, self)).shape)
-        self.reply_buffer = Buffer(buffer_capcity, input_shape[1:])
+
+        state_shape = np.array(self.env.state_f(self.env, self)).shape
+        input_shape = (batch_size, *state_shape)
+
+        self.reply_buffer = Buffer(buffer_capcity, state_shape)
 
         # compile the networks
         if not self.dqn.is_compiled:
@@ -585,7 +594,7 @@ class Environment:
         for agent, (state, action_idx) in zip(self.agents, agents_step):
             next_state = self.state_f(self, agent)
             net_reward = agent.granted_points
-
+            
             if self.reward_f != None:
                 net_reward += self.reward_f(self, agent)
 
@@ -827,7 +836,7 @@ class Renderer:
 
                 # show the reward / penalty on the screen close to the agent
                 if agent.reply_buffer:
-                    reward = agent.reply_buffer.rewards[-1]
+                    reward = agent.reply_buffer.rewards[agent.reply_buffer.idx - 1]
 
                     if reward > 0:
                         text_surface = self.reward_font.render(f"+{reward :.2g}", True, "green")

@@ -229,12 +229,12 @@ agent.compile(
     optim=Adam(lr=5e-4),
     cost=MSE, # J(θ) for π(s)
     dcost=None, # ∇ J(θ) for π(s)
-    update_tqn_every=2000,
+    update_tqn_every=1000,
     buffer_capcity=100_000
 )
 
 env.run(
-    episodes=60_000, # Experiement 1: (60_000)
+    episodes=65_000, # Experiement 1: (60_000)
     gamma=0.99,
     ε_range=(1, 0.05),
     ε_clip_ratio=0.9995,
