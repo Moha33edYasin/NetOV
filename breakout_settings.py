@@ -10,7 +10,7 @@ def create_board(rows, cols, blocks_rows):
     ]
 
 W, H = 800, 600
-NUM_ROW, NUM_COL, NUM_BLOCKS_ROW = 40, 20, 6 # 40, 20, 6
+NUM_ROW, NUM_COL, NUM_BLOCKS_ROW = 40, 20, 6 # Experiment 2: (20, 10, 3)
 FPS = 1000
 
 BLOCED_CODE = [1, 2, 3, 4, 5, 6]
@@ -24,7 +24,7 @@ LAZY_RENDERS = {
     6 : lambda screen, obj: pygame.draw.rect(screen, "blue", [*obj.pos, obj.width-1, obj.height-1])
 }
 
-WORLD_MAP = create_board(NUM_ROW, NUM_COL, NUM_BLOCKS_ROW) # Experiment 2: (20, 10, 3)
+WORLD_MAP = create_board(NUM_ROW, NUM_COL, NUM_BLOCKS_ROW)
 
 CELL_W = W / NUM_COL
 CELL_H = H / NUM_ROW
@@ -34,7 +34,7 @@ PADDEL_W = 2 * CELL_W
 
 BALL_RADIUS = 0.35 * W / H * CELL_H
 
-TRAVERSE_JUMP = min(CELL_W * CELL_W, CELL_H * CELL_H) * 3 # 1.15
+TRAVERSE_JUMP = min(CELL_W * CELL_W, CELL_H * CELL_H) * 1.25
 NORMAL_SPEED = TRAVERSE_JUMP * 1
 FAST_SPEED1 = TRAVERSE_JUMP * 1.25
 FAST_SPEED2 = TRAVERSE_JUMP * 1.75

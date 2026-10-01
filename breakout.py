@@ -61,7 +61,7 @@ def ball_update(dt):
 
     if ball.collide(agent, dt=dt, offset_down=-ball.radius):
         ball.n_paddel_hits += 1
-        agent.grant(0.5)
+        agent.grant(0.1)
 
         distance_x = ball.pos[0] - agent.pos[0] - agent.width / 2
 
@@ -230,13 +230,13 @@ agent.compile(
     cost=MSE, # J(θ) for π(s)
     dcost=None, # ∇ J(θ) for π(s)
     update_tqn_every=2000,
-    buffer_capcity=10_000
+    buffer_capcity=100_000
 )
 
 env.run(
     episodes=60_000, # Experiement 1: (60_000)
     gamma=0.99,
     ε_range=(1, 0.05),
-    ε_clip_ratio=0.85, # Experiement 1: (0.85)
+    ε_clip_ratio=0.9995,
     fps=FPS
 )

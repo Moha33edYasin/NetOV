@@ -61,13 +61,13 @@ def label_x(renderer, coordinate):
 
 def render_player(screen):
     if agent.record:
-        for state, _, _, state_after, _ in agent.record[:-1]:
+        for state, _, next_state, _, _ in agent.record[:-1]:
             pygame.draw.line(screen, 'seagreen', (
                 state[0] * cell_w + cell_w / 2, 
                 state[1] * cell_h + cell_h / 2
                 ), (
-                    state_after[0] * cell_w + cell_w / 2, 
-                    state_after[1] * cell_h + cell_h / 2
+                    next_state[0] * cell_w + cell_w / 2, 
+                    next_state[1] * cell_h + cell_h / 2
                     ), 3)
 
     pygame.draw.circle(screen, 'seagreen', agent.pos, agent.radius, 0)
@@ -92,6 +92,13 @@ env = Environment(
     cell_size=[cell_w, cell_h]
 )
 
+renderer = Renderer(
+    RES=(W, H),
+    init=pygame.init,
+    quit=pygame.quit
+)
+
+
 agent.render_f = render_player
 agent.track("pos", ([cell_w / 2, cell_h / 2], [W - cell_w / 2, H - cell_h / 2]))
 
@@ -104,12 +111,6 @@ agent.set_nn(
     )
 )
 
-renderer = Renderer(
-    RES=(W, H),
-    init=pygame.init,
-    quit=pygame.quit
-)
-
 renderer.configuer_debugger(
     figure=arrow_labels,
     info_y=label_y,
@@ -119,10 +120,7 @@ renderer.configuer_debugger(
 )
 
 agent.define_actions(
-    right,
-    left,
-    up,
-    down,
+    right, left, up, down,
     breaklaw_penalty=-1,
     done_f= lambda : np.array_equal(agent.pos, goal),
     fail_f=lambda : False

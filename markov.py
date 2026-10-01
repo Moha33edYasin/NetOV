@@ -36,6 +36,51 @@ class RestrictedListParam(list):
         if self.track_change:
             self.delta[key] = super().__getitem__(key) - original_value
 
+class Buffer():
+    def __init__(self, capacity, state_shape, float_dtype=np.float32, int_dtype=np.int16):
+        self.capacity = capacity
+
+        self.states = np.empty((capacity, *state_shape), dtype=float_dtype)
+        self.actions = np.empty((capacity,), dtype=int_dtype)
+        self.next_states = np.empty((capacity, *state_shape), dtype=float_dtype)
+        self.rewards = np.empty((capacity,), dtype=float_dtype)
+        self.dones = np.empty((capacity,), dtype=np.bool_)
+
+        self.idx = 0
+        self.size = 0
+
+    def __len__(self):
+        return self.size
+
+    def push(self, transition):
+        state, action_idx, next_state, reward, done = transition
+        capacity = self.__dict__["capacity"]
+
+        self.__dict__["states"][self.idx] = state
+        self.__dict__["actions"][self.idx] = action_idx
+        self.__dict__["next_states"][self.idx] = next_state
+        self.__dict__["rewards"][self.idx] = reward
+        self.__dict__["dones"][self.idx] = done
+
+        self.__dict__["idx"] = (self.__dict__["idx"] + 1) % capacity
+        self.__dict__["size"] = min(self.__dict__["size"] + 1, capacity)
+
+    def choice(self, batch_size):
+        idx = np.random.randint(0, self.size, batch_size)
+
+        states = self.states[idx]
+        actions = self.actions[idx]
+        next_states = self.next_states[idx]
+        rewards = self.rewards[idx]
+        dones = self.dones[idx]
+
+        return states, actions, next_states, rewards, dones
+
+    def __getattribute__(self, name):
+        if name in ["states", "actions", "next_states", "rewards", "dones"]:
+            return super().__getattribute__(name)[:self.__dict__["size"]]
+        else:
+            return super().__getattribute__(name)
 
 class Object:
     def __init__(self, **kwargs):
@@ -356,8 +401,8 @@ class Agent(Object):
 
         # For tracking agents progress
         self.actions = []
-        self.reply_buffer = []
         self.record = []
+        self.reply_buffer = None
         self.grad_step = 0
 
         self.granted_points = 0
@@ -382,7 +427,7 @@ class Agent(Object):
         self.granted_points += n_points
 
     def breaklaw_punish(self):
-        self.granted_points = self.breaklaw_penalty
+        self.granted_points += self.breaklaw_penalty
 
     def reset(self):
         super().reset()
@@ -408,7 +453,7 @@ class Agent(Object):
         else:
             i = self.Q(self.input_state).argmax()
 
-        return self.actions[i]
+        return self.actions[i], i
     
     def Q(self, states):
         if np.array(states).ndim == 1:
@@ -422,35 +467,33 @@ class Agent(Object):
     def Q_target(self, states):
         return self.tqn.feedforward(states)
      
-    def collect_Qtarget(self, gamma=1, batch_size=1, rng=np.random.default_rng()):
-        batch_seq = rng.choice(np.array(self.reply_buffer, dtype=object), size=batch_size, replace=False)
-        input_states = np.array(list(batch_seq[:, 0]))
-        input_xstates = np.array(list(batch_seq[:, 3]))
+    def collect_Qtarget(self, gamma=1, batch_size=1):
+        states, actions, next_states, rewards, dones = self.reply_buffer.choice(batch_size)
 
-        Qbatch_seq = self.Q(input_states)
-        Qtarget_seq = self.Q_target(input_xstates)
+        Qbatch_seq = self.Q(states)
+        Qtarget_seq = self.Q_target(next_states)
 
         # Double DQN
         # A_max = self.Q(next_states).argmax(axis=1)
         # Qtarget_seq = Qtarget_seq[np.arange(batch_size), A_max]
         temp_tq = []
 
-        for (_, a, r, _, done), Q, Qt in zip(batch_seq, Qbatch_seq, Qtarget_seq):
+        for a, r, done, Q, Qt in zip(actions, rewards, dones, Qbatch_seq, Qtarget_seq):
             if done:
-                Q[self.actions.index(a)] = r
+                Q[a] = r
             else:
-                Q[self.actions.index(a)] = r + gamma * np.max(Qt)
+                Q[a] = r + gamma * np.max(Qt)
             temp_tq.append(Q)
 
         return np.array(temp_tq, dtype=float)
 
     def compile(self, batch_size=1, optim=None, cost=None, dcost=None, update_tqn_every=None, buffer_capcity=1000, record_capcity=None):
         self.batch_size = batch_size
-        self.buffer_capcity = buffer_capcity
-        
         self.update_tqn_every = -1 if update_tqn_every == None else update_tqn_every
         self.record_capcity = -1 if record_capcity == None else record_capcity
+        
         input_shape = (batch_size, *np.array(self.env.state_f(self.env, self)).shape)
+        self.reply_buffer = Buffer(buffer_capcity, input_shape[1:])
 
         # compile the networks
         if not self.dqn.is_compiled:
@@ -468,19 +511,14 @@ class Agent(Object):
 
     def learn(self, gamma=1):
         # Temporal difference
-        if len(self.reply_buffer) > self.batch_size:
+        if self.reply_buffer.size > self.batch_size:
             temp_tq = self.collect_Qtarget(gamma, batch_size=self.batch_size)
             self.dqn.backprop(temp_tq) # Q-learning
 
             self.grad_step = (self.grad_step + 1) % self.update_tqn_every
             if self.grad_step == 0: self.tqn.copy_from(self.dqn)
 
-        if len(self.reply_buffer) >= self.buffer_capcity:
-            self.reply_buffer.pop(0)
-
-        if len(self.record) >= self.record_capcity:
-            self.accu_reward += np.array(self.record, dtype=object)[:, 2].sum()
-            self.record.clear()
+        if len(self.record) >= self.record_capcity: self.record.pop(0)
 
 
 class Environment:
@@ -537,23 +575,24 @@ class Environment:
 
         for agent in self.agents:
             state = self.state_f(self, agent)
-            action = agent.take_action(ε)
-            agents_step.append((state, action))
+            action, action_idx = agent.take_action(ε)
+            agents_step.append((state, action_idx))
             
             action(agent) # This will excute action only if it was succesful.
         
         for obj in self.active_objects: obj.update_f(dt) # update all active objects
 
-        for agent, (state, action) in zip(self.agents, agents_step):
+        for agent, (state, action_idx) in zip(self.agents, agents_step):
             next_state = self.state_f(self, agent)
             net_reward = agent.granted_points
 
             if self.reward_f != None:
                 net_reward += self.reward_f(self, agent)
 
-            trans = (state, action, net_reward, next_state, agent.done())        
+            trans = (state, action_idx, next_state, net_reward, agent.done())        
             agent.record.append(trans)
-            agent.reply_buffer.append(trans)
+            agent.reply_buffer.push(trans)
+            agent.accu_reward += net_reward
             agent.granted_points = 0
 
     def active_objects_init(self):
@@ -636,7 +675,7 @@ class Environment:
                     print(f"(!) The environment is stopped.         ({perf_counter() - initial_time :.2f}s)")
                     return
 
-            print("Episode #:", episode, "   Total Reward per Child:", [round(agent.accu_reward, 2) for agent in self.agents])
+            print("Episode #:", episode, "   Total Reward per Child:", [np.round(agent.accu_reward, 2) for agent in self.agents])
         print(f"(*) Simulation Finished.            ({perf_counter() - initial_time :.2f}s)")
 
 
@@ -788,14 +827,14 @@ class Renderer:
 
                 # show the reward / penalty on the screen close to the agent
                 if agent.reply_buffer:
-                    reward = agent.reply_buffer[-1][2]
-                    
+                    reward = agent.reply_buffer.rewards[-1]
+
                     if reward > 0:
-                        text_surface = self.reward_font.render(f"+{reward}", True, "green")
+                        text_surface = self.reward_font.render(f"+{reward :.2g}", True, "green")
                     elif reward == 0:
                         continue
                     else:
-                        text_surface = self.reward_font.render(f"{reward}", True, "red")
+                        text_surface = self.reward_font.render(f"{reward :.2g}", True, "red")
 
                     if hasattr(agent, "width"):
                         label_x = agent.pos[0] + agent.width - self.cell_width / 2
