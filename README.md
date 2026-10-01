@@ -95,7 +95,7 @@ agent.define_actions(
 
 ## The Result
   
-<img width="898" height="600" alt="maze solver" src="https://github.com/user-attachments/assets/29bf1631-cde8-4a22-bf32-1c48101eb29a" />
+<img width="898" height="600" alt="20261001-1830-32 7113342" src="https://github.com/user-attachments/assets/7e0c0158-6edd-4178-9c85-aa636dbb1e17" />  
   
   
 ## Experiment B: Playing Breakout
