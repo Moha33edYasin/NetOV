@@ -157,8 +157,8 @@ PADDEL_H = 0.6 * CELL_H
 PADDEL_W = 2 * CELL_W
 ```
 
-**The goal** is to **hit all the blocks** with the ball by moving the paddle so that the ball bounces toward them 
-
+**The goal** is to **hit all the blocks** with the ball by moving the paddle so that the ball bounces toward them.   
+We will walk through how to use NetOV to produce the solution together.  
 
 ## Core Elements
 
@@ -470,6 +470,10 @@ renderer.configuer_debugger(
 > * For multiple agents, you can debug any agent by pressing keyboard key corresponding to that agent index (e.g. `1` for the first agent, and so on), and then `SPACE` to inspect.
 
 ---
+
+## The Result
+<img width="800" height="598" alt="20261003-1030-14 5205950" src="https://github.com/user-attachments/assets/1d13cdc2-daca-4136-b1a3-cbfd2ec82a12" />
+
 
 ## One Important Caveat
 NetOV is still under active development.
