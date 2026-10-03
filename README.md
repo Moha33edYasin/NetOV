@@ -329,8 +329,8 @@ The agent uses a small neural network created through NetJet:
 agent.set_nn(
     nn(
         Flatten(),
-        Dense(64, Leaky_ReLU()),
-        Dense(64, Leaky_ReLU()),
+        Dense(128, Leaky_ReLU()),
+        Dense(128, Leaky_ReLU()),
         Dense(3)
     )
 )
@@ -346,8 +346,8 @@ agent.compile(
     optim=Adam(lr=5e-4),
     cost=MSE,
     dcost=None,
-    update_tqn_every=2000,
-    buffer_capcity=10_000
+    update_tqn_every=1000,
+    buffer_capcity=50_000
 )
 ```
 
@@ -471,7 +471,7 @@ renderer.configuer_debugger(
 
 ---
 
-## The Result
+## The Result After 12k Episodes
 <img width="800" height="598" alt="20261003-1030-14 5205950" src="https://github.com/user-attachments/assets/1d13cdc2-daca-4136-b1a3-cbfd2ec82a12" />
 
 
@@ -486,7 +486,6 @@ The current goal is **not** to present a finished RL library, but to build and e
 
 The current prototype uses:  
 
-* Python
 * NumPy
 * Pygame
 * NetJet
