@@ -472,7 +472,9 @@ renderer.configuer_debugger(
 ---
 
 ## The Result After 12k Episodes
-<img width="800" height="598" alt="20261003-1030-14 5205950" src="https://github.com/user-attachments/assets/1d13cdc2-daca-4136-b1a3-cbfd2ec82a12" />
+<img width="800" height="598" alt="Breakout" src="https://github.com/user-attachments/assets/e42e05a9-d3fd-4727-8b19-295599aba412" />  
+  
+  
 
 
 ## One Important Caveat
