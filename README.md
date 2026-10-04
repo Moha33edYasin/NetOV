@@ -140,7 +140,7 @@ LAZY_RENDERS = {
 Next, we make a simple grid (`20x10` with `3` rows of brick) to low represent the game board.
 
 ```python
-world_map = create_board(20, 10, 3)
+WORLD_MAP = create_board(20, 10, 3)
 ```
 
 > [!NOTE]
