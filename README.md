@@ -137,10 +137,10 @@ LAZY_RENDERS = {
 > [!NOTE]  
 > `Renderer` currently use Pygame as the its main rendering engine. If you used NetOV `Renderer`, you have to use Pygame when building your rendering functions.
 
-Next, we make a simple grid (`40x20` with `6` rows of brick) to low represent the game board.
+Next, we make a simple grid (`20x10` with `3` rows of brick) to low represent the game board.
 
 ```python
-world_map = create_board(40, 20, 6)
+world_map = create_board(20, 10, 3)
 ```
 
 > [!NOTE]
