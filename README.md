@@ -456,7 +456,7 @@ agent.renderer_f = peddel_render
 
 ```python
 renderer.configuer_debugger(
-    figure=arrow_labels, # function to draw figure (here, it an arrow pointing to direction of the most likely next action)
+    figure=arrow_labels, # function to draw figure (here, it an arrow pointing to the direction of the most likely next action)
     info_y=label_y, # function of y coordinate of the info written with respect to the position of an agent in a certain state 
     info_x=label_x, # function of x coordinate of the info written with respect to the position of an agent in a certain state
     colors=["orange", "purple"], # line colors (also affect the figure color)
@@ -481,7 +481,7 @@ I've experiment with different MLPs to make the agent learn a bigger board (`40x
 <img width="798" height="600" alt="Best Breakout Attempt for MLP" src="https://github.com/user-attachments/assets/9e1272f1-18f6-418e-9492-79fe472fe885" />  
   
   
-I used a two hidden layers, `Dense(128)` → `Dense(128)`,  `Adam(lr=3e-4)`, and `60000` episodes. Target network updates every `2000` gradient steps.  
+Here, I used a two hidden layers, `Dense(128)` → `Dense(128)`,  `Adam(lr=3e-4)`, and `60000` episodes. Target network updates every `2000` gradient steps.  
 You may notice that I have artificially dropped ε to `0.05`. You can do so by pressing `PAGE DOWN` while the simulation is running.  
   
 ## One Important Caveat
