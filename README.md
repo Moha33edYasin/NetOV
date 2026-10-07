@@ -475,8 +475,15 @@ renderer.configuer_debugger(
 <img width="800" height="598" alt="Breakout" src="https://github.com/user-attachments/assets/e42e05a9-d3fd-4727-8b19-295599aba412" />  
   
   
+I've experiment with different MLPs to make the agent learn a bigger board (`40x20` with `6` rows of bricks), but MLP seem to struggle because of the high dimensionality.  
 
-
+## Here is One of MLP's Best Attempts (~33400 Episodes)
+<img width="798" height="600" alt="Best Breakout Attempt for MLP" src="https://github.com/user-attachments/assets/9e1272f1-18f6-418e-9492-79fe472fe885" />  
+  
+  
+I used a two hidden layers, `Dense(128)` → `Dense(128)`,  `Adam(lr=3e-4)`, and `60000` episodes. Target network updates every `2000` gradient steps.  
+You may notice that I have artificially dropped ε to `0.05`. You can do so by pressing `PAGE DOWN` while the simulation is running.  
+  
 ## One Important Caveat
 NetOV is still under active development.
 
