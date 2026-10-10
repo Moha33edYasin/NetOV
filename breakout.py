@@ -129,33 +129,7 @@ def paddel_left(agent):
     agent.pos[0] -= CELL_W
 
 def paddel_render(screen):
-    # colors = ["black", "orange", "red", "purple", "gray"]
-    # icolors = ["deeppink", "lightsalmon1", "seagreen1", "wheat3"]
     pygame.draw.rect(screen, "blue", [*agent.pos, agent.width, agent.height])
-
-    # if hasattr(agent, "points"):
-    #     pygame.draw.circle(screen, icolors[1], agent.points[0], 3)
-    #     pygame.draw.circle(screen, icolors[1], agent.points[1], 3)
-    #     pygame.draw.line(screen, icolors[1], agent.points[0], agent.points[1])
-
-    # if hasattr(ball, "points"):
-    #     for i, p in enumerate(ball.points): pygame.draw.circle(screen, colors[int(i / 2)], p, 3)
-    #     for i in range(0, len(ball.points), 2): pygame.draw.line(screen, colors[int(i / 2)], ball.points[i], ball.points[i + 1])
-
-    #     if hasattr(ball, "CC1"):
-    #         for p in ball.CC1:
-    #             pygame.draw.rect(screen, "gray", [*p, CELL_W, CELL_H])
-    #     if hasattr(ball, "CC"):
-    #         for p in ball.CC:
-    #             pygame.draw.rect(screen, "pink", [*p, CELL_W, CELL_H])
-        
-    #     if hasattr(ball, "P1"):
-    #         pygame.draw.rect(screen, "seagreen1", [*ball.P1, CELL_W, CELL_H])
-        
-    #     if hasattr(ball, "A"):
-    #         pygame.draw.circle(screen, "purple", ball.A, 3)
-        
-    #     for i, p in enumerate(ball.intersections): pygame.draw.circle(screen, icolors[i], p, 2)
 
 # agent setup
 ball = Object(
